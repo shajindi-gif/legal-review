@@ -45,8 +45,10 @@ systemctl enable --now docker
 # 3. 项目代码 -------------------------------------------------------
 log "[3/7] 拉取项目代码"
 if [[ ! -d "$PROJECT_DIR" ]]; then
-    echo "  请先把代码 push 到 git,然后改下面这一行:"
-    echo "    git clone <你的 repo url> $PROJECT_DIR"
+    echo "  请先手动 clone 代码到服务器:"
+    echo "    git clone git@github.com:shajindi-gif/legal-review.git $PROJECT_DIR"
+    echo "  若服务器未配置 GitHub SSH key,改用 https:"
+    echo "    git clone https://github.com/shajindi-gif/legal-review.git $PROJECT_DIR"
     die "未自动 git clone,等用户填 repo"
 fi
 cd "$PROJECT_DIR/deploy"
