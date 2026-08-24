@@ -10,7 +10,8 @@ ENV PYTHONUNBUFFERED=1 \
 # - libmagic1: python-magic 文件类型识别
 # - poppler-utils: pdf2image
 # - fonts-noto-cjk: WeasyPrint 中文 PDF
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN sed -i 's#deb.debian.org#mirrors.tencentyun.com#g; s#security.debian.org#mirrors.tencentyun.com#g' /etc/apt/sources.list.d/debian.sources && \
+    apt-get update && apt-get install -y --no-install-recommends \
     libpq5 libmagic1 poppler-utils fonts-noto-cjk \
     && rm -rf /var/lib/apt/lists/*
 
@@ -18,7 +19,7 @@ WORKDIR /app
 
 # 先装依赖（利用 Docker 层缓存）
 COPY pyproject.toml ./
-RUN pip install --upgrade pip && pip install -e ".[dev]"
+RUN pip install --upgrade pip && pip install -i https://mirrors.tencentyun.com/pypi/simple -e ".[dev]"
 
 # 复制源码
 COPY . .
