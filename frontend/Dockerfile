@@ -20,6 +20,7 @@ ENV NODE_ENV=production \
     HOSTNAME=0.0.0.0
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@11.6.0 --activate && \
+    sed -i 's#deb.debian.org#mirrors.tencentyun.com#g; s#security.debian.org#mirrors.tencentyun.com#g' /etc/apt/sources.list.d/debian.sources && \
     apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/public ./public
