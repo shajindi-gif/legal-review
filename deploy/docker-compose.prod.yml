@@ -1,0 +1,110 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: legal-pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: legal
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-legal_prod_pass}
+      POSTGRES_DB: legal_review
+    volumes:
+      - legal_pg_data:/var/lib/postgresql/data
+      - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U legal -d legal_review"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [appnet]
+
+  redis:
+    image: redis:7-alpine
+    container_name: legal-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - legal_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [appnet]
+
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: legal-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://legal:${POSTGRES_PASSWORD:-legal_prod_pass}@postgres:5432/legal_review
+      REDIS_URL: redis://redis:6379/0
+      LLM_PROVIDER: ${LLM_PROVIDER:-mock}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      QWEN_API_KEY: ${QWEN_API_KEY:-}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://legalai86.com.cn}
+      SANDBOX_ROOT: /app/_sandbox
+      ENVIRONMENT: production
+    volumes:
+      - legal_backend_sandbox:/app/_sandbox
+      - legal_backend_uploads:/app/uploads
+    networks: [appnet]
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: legal-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      NEXT_PUBLIC_API_BASE: /api
+      BACKEND_URL: http://backend:8000
+      ALLOWED_ORIGIN: https://legalai86.com.cn
+    networks: [appnet]
+
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    container_name: legal-nginx
+    restart: unless-stopped
+    depends_on:
+      - frontend
+      - backend
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - legal_certbot_conf:/etc/letsencrypt
+      - legal_certbot_www:/var/www/certbot
+    networks: [appnet]
+
+  certbot:
+    image: certbot/certbot:latest
+    container_name: legal-certbot
+    profiles: ["certbot"]
+    volumes:
+      - legal_certbot_conf:/etc/letsencrypt
+      - legal_certbot_www:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $!; done'"
+
+volumes:
+  legal_pg_data:
+  legal_redis_data:
+  legal_backend_sandbox:
+  legal_backend_uploads:
+  legal_certbot_conf:
+  legal_certbot_www:
+
+networks:
+  appnet:
+    driver: bridge

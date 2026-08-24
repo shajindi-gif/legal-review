@@ -1,0 +1,51 @@
+# legal_query 节点 Prompt v1.0.0
+# 将审核问题转换为 RAG 检索 query（替换 Sprint 3 启发式抽取）
+# Eval: Top-10 召回率 ≥ 90%
+
+prompt_key: legal_query
+version: v1.0.0
+# model_name 由 registry.yaml 统一管理（DeepSeek-V4/Qwen3.7 可切），不在 YAML 硬编码
+temperature: 0.2
+variables:
+  - name: title
+    type: string
+    required: true
+  - name: issuing_authority
+    type: string
+    required: false
+  - name: policy_domain
+    type: string
+    required: false
+  - name: keywords
+    type: list
+    required: false
+  - name: body_paragraphs
+    type: list
+    required: true
+    description: 正文段落（前 5 段）
+template: |
+  你是法规检索 query 生成专家。请将以下行政规范性文件的审核问题清单转换为 RAG 检索 query。
+
+  ## 文件信息
+  - 标题：{{ title }}
+  - 制定机关：{{ issuing_authority }}
+  - 政策领域：{{ policy_domain }}
+  - 关键词：{{ keywords | join(", ") }}
+
+  ## 正文段落（前 5 段）
+  {% for p in body_paragraphs[:5] %}
+  - {{ p.text if p is mapping else p }}
+  {% endfor %}
+
+  ## 任务
+  生成 5-10 条高质量检索 query，覆盖：
+  1. 制定主体权限（检索《地方组织法》《立法法》）
+  2. 行政许可/处罚/强制设置（检索《行政许可法》《行政处罚法》《行政强制法》）
+  3. 收费/证明事项（检索《优化营商环境条例》）
+  4. 程序要求（检索《重大行政决策程序暂行条例》）
+  5. 文件涉及的具体条款（基于正文段落）
+
+  ## 输出格式（严格 JSON，禁止任何额外文本）
+  {
+    "queries": ["query1", "query2", ...]
+  }

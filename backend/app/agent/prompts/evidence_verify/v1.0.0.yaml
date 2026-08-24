@@ -1,0 +1,54 @@
+# evidence_verify 节点 Prompt v1.0.0
+# 校验证据完整性（核心节点，触发 Retry Loop）
+# Eval: 证据覆盖率 100%
+
+prompt_key: evidence_verify
+version: v1.0.0
+# model_name 由 registry.yaml 统一管理（DeepSeek-V4/Qwen3.7 可切），不在 YAML 硬编码
+temperature: 0.0
+variables:
+  - name: all_results
+    type: string
+    required: true
+    description: 全部 AgentOutput JSON
+  - name: legal_context
+    type: string
+    required: true
+    description: RAG 召回的法规原文（用于核对）
+template: |
+  你是证据校验专家。请按以下校验项核对所有 RiskItem 的证据完整性。
+
+  ## 全部审查结果
+  {{ all_results }}
+
+  ## RAG 召回的法规原文
+  {{ legal_context }}
+
+  ## 校验项（按顺序）
+  1. 每个 RiskItem 必含 evidence.law_name
+  2. 每个 RiskItem 必含 evidence.article
+  3. 每个 RiskItem 必含 evidence.original_text
+  4. 引用原文与法规库原文编辑距离 ≤ 0.15
+  5. confidence ≥ 0.7
+  6. 重复风险点合并
+
+  ## 输出格式（严格 JSON）
+  {
+    "status": "PASS | FAIL",
+    "missing_evidences": [
+      {
+        "agent_name": "authority_review",
+        "risk_index": 0,
+        "missing_field": "evidence.original_text",
+        "reason": "原文为空"
+      }
+    ],
+    "duplicated_risks": [
+      {"indices": [0, 2], "reason": "风险点重复"}
+    ],
+    "low_confidence_risks": [
+      {"index": 1, "confidence": 0.5, "threshold": 0.7}
+    ],
+    "confidence": 1.0,
+    "reasoning": "..."
+  }

@@ -1,0 +1,56 @@
+# risk_assessment 节点 Prompt v1.0.0
+# 按风险等级权重综合评级（Aggregator 模式）
+# Eval: 与人工标注 kappa ≥ 0.85
+
+prompt_key: risk_assessment
+version: v1.0.0
+# model_name 由 registry.yaml 统一管理（DeepSeek-V4/Qwen3.7 可切），不在 YAML 硬编码
+temperature: 0.3
+variables:
+  - name: authority_result
+    type: string
+    required: true
+    description: 主体审查结果（JSON）
+  - name: procedure_result
+    type: string
+    required: true
+  - name: content_result
+    type: string
+    required: true
+template: |
+  你是县级司法局行政规范性文件审查主管。请综合三维度审查结果给出总体评级。
+
+  ## 主体审查结果
+  {{ authority_result }}
+
+  ## 程序审查结果
+  {{ procedure_result }}
+
+  ## 内容审查结果
+  {{ content_result }}
+
+  ## 评级规则
+  | 条件 | 总体评级 |
+  |------|----------|
+  | 任一 critical 风险 | FAIL |
+  | 任一 high 风险且 ≥ 2 处 | FAIL |
+  | 任一 high 风险 | RISK |
+  | 多处 medium 风险 | RISK |
+  | 仅 low 风险或无风险 | PASS |
+
+  ## 输出格式（严格 JSON）
+  {
+    "overall_status": "PASS | RISK | FAIL",
+    "risk_summary": {
+      "critical_count": 0,
+      "high_count": 0,
+      "medium_count": 0,
+      "low_count": 0,
+      "dimensions_hit": ["authority", "content"]
+    },
+    "top_risks": [
+      // 列出 top 3 风险点（按 severity 降序）
+    ],
+    "confidence": 0.0-1.0,
+    "reasoning": "综合评级理由"
+  }

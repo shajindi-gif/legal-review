@@ -1,0 +1,84 @@
+[project]
+name = "legal-review-backend"
+version = "0.1.0"
+description = "行政规范性文件智能合法性审查 Agent 系统 - 后端 API 服务"
+requires-python = ">=3.11"
+dependencies = [
+    # Web 框架
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.27.0",
+    "python-multipart>=0.0.9",
+    # 数据校验
+    "pydantic>=2.6.0",
+    "pydantic-settings>=2.1.0",
+    # 数据库
+    "sqlalchemy[asyncio]>=2.0.25",
+    "asyncpg>=0.29.0",
+    "alembic>=1.13.0",
+    "pgvector>=0.3.0",
+    # 缓存 / 队列
+    "redis[hiredis]>=5.0.0",
+    # HTTP 客户端（LLM Gateway）
+    "httpx>=0.27.0",
+    # LangGraph（Agent 编排：两层 Graph = 主控 Supervisor + 子图）
+    "langgraph>=0.2.0",
+    # Prompt 模板渲染
+    "jinja2>=3.1.0",
+    # YAML 解析（Prompt 配置）
+    "pyyaml>=6.0.1",
+    # 日志与可观测性
+    "structlog>=24.1.0",
+    # 文件与 OCR
+    "python-magic>=0.4.27",
+    "Pillow>=10.0.0",
+    "paddleocr>=2.7.0",
+    "paddlepaddle>=2.6.0",
+    "python-docx>=1.1.0",
+    "pypdf>=4.0.0",
+    # PDF 报告
+    "weasyprint>=60.0",
+    # 工具
+    "python-dotenv>=1.0.0",
+    "uuid-utils>=0.7.0",
+    # 鉴权（SaaS 用户系统）
+    "bcrypt>=4.1.0",
+    "pyjwt>=2.8.0",
+    "email-validator>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "httpx>=0.27.0",
+    "ruff>=0.3.0",
+    "mypy>=1.8.0",
+    "types-redis>=4.6.0",
+    "testcontainers[postgres]>=3.7.0",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "C4", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+# FastAPI Depends() 在默认参数中是官方推荐的依赖注入写法
+"app/api/**/*.py" = ["B008"]
+"app/api/deps.py" = ["B008"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+plugins = ["pydantic.mypy"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-v --tb=short --cov=app --cov-report=term-missing"

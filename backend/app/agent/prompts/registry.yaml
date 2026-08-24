@@ -1,0 +1,71 @@
+# Prompt 版本注册表 - 集中管理所有 Prompt 的当前激活版本
+#
+# 硬约束：
+# 1. 生产环境只允许 status='active' 的 Prompt
+# 2. 任何变更必须先过 golden_dataset 评测（通过率 ≥ 90%）
+# 3. 旧版本状态置为 deprecated，可回滚
+# 4. 未在 registry 注册的 prompt_key 禁止调用
+#
+# 字段说明：
+#   prompt_key: 唯一标识（与 prompts 表 prompt_key 对齐）
+#   active_version: 当前激活版本（启动时 PromptManager 加载到内存）
+#   model_name: 默认模型（可被 settings.llm_provider 覆盖）
+#   temperature: 默认温度
+#   min_eval_pass_rate: 激活所需的评测通过率下限
+
+prompts:
+  - prompt_key: doc_classify
+    active_version: v1.0.0
+    model_name: qwen-turbo          # flash 档：分类任务轻量快速
+    model_tier: flash               # strong|balanced|flash|reasoner
+    temperature: 0.1
+    min_eval_pass_rate: 0.90
+
+  - prompt_key: legal_query
+    active_version: v1.0.0
+    model_name: qwen-turbo          # flash 档：query 生成轻量任务
+    model_tier: flash
+    temperature: 0.2
+    min_eval_pass_rate: 0.85
+
+  - prompt_key: authority_review
+    active_version: v1.0.0
+    model_name: qwen3.7-max         # strong 档：主体审查需高准确率（Qwen3.7 旗舰）
+    model_tier: strong
+    temperature: 0.2
+    min_eval_pass_rate: 0.95
+
+  - prompt_key: procedure_review
+    active_version: v1.0.0
+    model_name: qwen-plus           # balanced 档：程序审查中等复杂度
+    model_tier: balanced
+    temperature: 0.2
+    min_eval_pass_rate: 0.85
+
+  - prompt_key: content_review
+    active_version: v1.0.0
+    model_name: qwen3.7-max         # strong 档：内容审查需深度推理（Qwen3.7 旗舰）
+    model_tier: strong
+    temperature: 0.2
+    min_eval_pass_rate: 0.85
+
+  - prompt_key: risk_assessment
+    active_version: v1.0.0
+    model_name: deepseek-v4-pro     # reasoner 档：综合评级需推理链（V4 Pro 旗舰）
+    model_tier: reasoner
+    temperature: 0.3
+    min_eval_pass_rate: 0.85
+
+  - prompt_key: evidence_verify
+    active_version: v1.0.0
+    model_name: qwen3.7-max         # strong 档：证据校验零容忍（Qwen3.7 旗舰）
+    model_tier: strong
+    temperature: 0.0
+    min_eval_pass_rate: 1.00
+
+  - prompt_key: report_generation
+    active_version: v1.0.0
+    model_name: qwen-plus           # balanced 档：报告生成中等复杂度
+    model_tier: balanced
+    temperature: 0.4
+    min_eval_pass_rate: 1.00

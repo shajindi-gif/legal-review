@@ -1,0 +1,98 @@
+# report_generation 节点 Prompt v1.0.0
+# 生成结构化审查报告（Markdown）
+# Eval: 报告完整性 100%，引用回链率 100%
+
+prompt_key: report_generation
+version: v1.0.0
+# model_name 由 registry.yaml 统一管理（DeepSeek-V4/Qwen3.7 可切），不在 YAML 硬编码
+temperature: 0.4
+variables:
+  - name: doc_info
+    type: string
+    required: true
+    description: 文件基本信息 JSON
+  - name: overall_status
+    type: string
+    required: true
+  - name: authority_result
+    type: string
+    required: true
+  - name: procedure_result
+    type: string
+    required: true
+  - name: content_result
+    type: string
+    required: true
+  - name: risk_result
+    type: string
+    required: true
+  - name: all_evidences
+    type: string
+    required: true
+    description: 全部引用法规列表
+template: |
+  你是县级司法局审查报告撰写专家。请按以下模板生成结构化审查报告。
+
+  ## 文件基本信息
+  {{ doc_info }}
+
+  ## 总体评级
+  {{ overall_status }}
+
+  ## 主体审查结果
+  {{ authority_result }}
+
+  ## 程序审查结果
+  {{ procedure_result }}
+
+  ## 内容审查结果
+  {{ content_result }}
+
+  ## 风险评级结果
+  {{ risk_result }}
+
+  ## 全部引用法规
+  {{ all_evidences }}
+
+  ## 报告章节模板
+  ```
+  一、文件基本情况
+     （一）文件名称
+     （二）制定机关
+     （三）发布日期
+     （四）文号
+
+  二、审查依据
+     （一）法律法规依据（列出全部引用法规）
+     （二）审查规范依据
+
+  三、审核过程
+     （一）审核程序
+     （二）Agent 节点流转
+
+  四、发现问题
+     （一）主体合法性
+     （二）程序完整性
+     （三）内容合法性
+     每个问题包含：风险 / 依据 / 原文 / 解释 / 建议
+
+  五、风险等级
+     PASS / RISK / FAIL
+
+  六、修改建议
+
+  七、审查意见
+     AI 初审意见 + 人工复核栏
+  ```
+
+  ## 输出格式（严格 JSON）
+  {
+    "report_markdown": "...(完整 Markdown 报告)",
+    "evidence_count": 0,
+    "section_complete": true,
+    "confidence": 1.0
+  }
+
+  ## 硬约束
+  - "二、审查依据"必须列出全部引用法规（去重）
+  - "七、审查意见"必须含"人工复核栏"占位

@@ -1,0 +1,66 @@
+# authority_review 节点 Prompt v1.0.0
+# 审查制定主体是否合法（在法定制定主体清单 + 是否有制定权限 + 是否超越职权）
+# Eval: 主体判断准确率 ≥ 95%
+
+prompt_key: authority_review
+version: v1.0.0
+# model_name 由 registry.yaml 统一管理（DeepSeek-V4/Qwen3.7 可切），不在 YAML 硬编码
+temperature: 0.2
+variables:
+  - name: issuing_authority
+    type: string
+    required: true
+    description: 制定机关
+  - name: doc_title
+    type: string
+    required: true
+    description: 文件标题
+  - name: legal_context
+    type: string
+    required: true
+    description: RAG 召回的相关法规条款（已格式化）
+template: |
+  你是县级司法局行政合法性审查专家。请审查以下文件的制定主体是否合法。
+
+  ## 文件信息
+  - 标题：{{ doc_title }}
+  - 制定机关：{{ issuing_authority }}
+
+  ## 法规依据（RAG 召回）
+  {{ legal_context }}
+
+  ## 审查要点
+  1. 制定主体是否在法定制定主体清单内（县级政府/县政府工作部门/乡镇政府）
+  2. 是否具有制定权限（按《地方组织法》第七十六条）
+  3. 是否超越职权（涉及上位法专属立法事项？）
+  4. 涉及公民权利义务/企业经营的，是否有上位法授权
+
+  ## 评级标准
+  - PASS：主体合法、权限明确、无越权
+  - RISK：主体合法但权限边界模糊
+  - FAIL：主体不合法或明显越权
+
+  ## 输出格式（严格 JSON，禁止任何额外文本）
+  {
+    "status": "PASS | RISK | FAIL",
+    "risks": [
+      {
+        "dimension": "authority",
+        "risk_type": "如 违法设置行政许可",
+        "severity": "low | medium | high | critical",
+        "evidence": {
+          "law_name": "...",
+          "article": "如 第十五条",
+          "original_text": "条款原文",
+          "explanation": "冲突解释"
+        },
+        "confidence": 0.0-1.0,
+        "suggestion": "修改建议"
+      }
+    ],
+    "evidences": [
+      {"law_name": "...", "article": "...", "original_text": "...", "explanation": "..."}
+    ],
+    "confidence": 0.0-1.0,
+    "reasoning": "..."
+  }

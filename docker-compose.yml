@@ -1,0 +1,26 @@
+# 行政规范性文件智能合法性审查 Agent 系统 - 本地开发基础设施
+# 使用：docker compose up -d
+# 注：Redis 使用本地 homebrew redis-server（6379 已占用），此文件仅启动 PostgreSQL
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: legal-review-pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: legal
+      POSTGRES_PASSWORD: legal_dev_pass
+      POSTGRES_DB: legal_review
+    ports:
+      - "5434:5432"
+    volumes:
+      - legal_pg_data:/var/lib/postgresql/data
+      - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U legal -d legal_review"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  legal_pg_data:
