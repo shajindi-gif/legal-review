@@ -84,6 +84,7 @@ services:
       - "80:80"
       - "443:443"
     volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
       - legal_certbot_conf:/etc/letsencrypt
       - legal_certbot_www:/var/www/certbot
     networks: [appnet]
