@@ -114,8 +114,8 @@ async def test_send_code_ip_rate_limit_blocks() -> None:
 async def test_send_code_daily_limit_blocks() -> None:
     session = _make_session_mock()
     sms = _make_sms_mock()
-    # cooldown None, ip 0, day_count 10 (>= max)
-    session.scalar.side_effect = [None, 0, 10]
+    # cooldown None, day_count 10 (>= max) — 第二次 scalar 调 day_count
+    session.scalar.side_effect = [None, 10]
     svc = VerificationService(session, sms=sms)
     with pytest.raises(CodeError) as ei:
         await svc.send_code(target="+8613800138003", purpose="register")
@@ -141,8 +141,9 @@ async def test_verify_no_record_raises() -> None:
     session = _make_session_mock()
     session.scalar.return_value = None
     svc = VerificationService(session, sms=_make_sms_mock())
-    with pytest.raises(CodeError, match="invalid_code"):
+    with pytest.raises(CodeError) as ei:
         await svc.verify(target="+8613800138000", code="000000", purpose="register")
+    assert ei.value.code == "invalid_code"
 
 
 @pytest.mark.asyncio
@@ -175,8 +176,9 @@ async def test_verify_too_many_attempts_locks() -> None:
     row.used_at = None
     session.scalar.return_value = row
     svc = VerificationService(session, sms=_make_sms_mock())
-    with pytest.raises(CodeError, match="code_locked"):
+    with pytest.raises(CodeError) as ei:
         await svc.verify(target="+8613800138000", code="123456", purpose="register")
+    assert ei.value.code == "code_locked"
     assert row.used_at is not None
 
 
