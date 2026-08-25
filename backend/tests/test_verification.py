@@ -125,6 +125,8 @@ async def test_send_code_daily_limit_blocks() -> None:
 @pytest.mark.asyncio
 async def test_send_code_email_not_implemented() -> None:
     session = _make_session_mock()
+    # 让 send_code 顺利走到 "email 暂未实现" 校验, 不要被 cooldown 拦截
+    session.scalar.side_effect = [None, 0]
     svc = VerificationService(session, sms=_make_sms_mock())
     with pytest.raises(CodeError) as ei:
         await svc.send_code(target="a@b.com", channel="email", purpose="register")
