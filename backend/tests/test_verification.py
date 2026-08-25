@@ -77,11 +77,12 @@ async def test_send_code_cooldown_blocks_second_request() -> None:
     """60s 冷却: 第一次返回 None (无历史), 第二次返回刚发出的 row → 触发冷却。"""
     session = _make_session_mock()
     sms = _make_sms_mock()
-    # scalar 第一次: 查 cooldown (无), 第二次: 查 ip 限流 (0), 第三次: 查 24h 限流 (0)
-    # 然后下一次调用, 第一次查 cooldown 就能返回 row
+    # send_code (无 ip_address) 调 scalar 2 次: cooldown + day_count
+    # 第一次 send_code: cooldown=None, day_count=0  (返回 success)
+    # 第二次 send_code: cooldown=recent_row → raise
     recent_row = MagicMock()
     recent_row.created_at = __import__("datetime").datetime.utcnow()
-    session.scalar.side_effect = [None, 0, 0, recent_row]
+    session.scalar.side_effect = [None, 0, recent_row]
 
     svc = VerificationService(session, sms=sms)
     # 第一次: 应该成功
@@ -91,8 +92,9 @@ async def test_send_code_cooldown_blocks_second_request() -> None:
     sms.send_code.assert_awaited()
 
     # 第二次: 触发 60s 冷却
-    with pytest.raises(RateLimitedError):
+    with pytest.raises(CodeError) as ei:
         await svc.send_code(target="+8613800138000", purpose="register")
+    assert ei.value.code == "rate_limited"
 
 
 @pytest.mark.asyncio
@@ -114,9 +116,10 @@ async def test_send_code_daily_limit_blocks() -> None:
     sms = _make_sms_mock()
     # cooldown None, ip 0, day_count 10 (>= max)
     session.scalar.side_effect = [None, 0, 10]
-    svc = VerificationService(session, sms=sms)
-    with pytest.raises(RateLimitedError, match="今日"):
+    svc = VerificationService(session, sms=_make_sms_mock())
+    with pytest.raises(CodeError) as ei:
         await svc.send_code(target="+8613800138003", purpose="register")
+    assert ei.value.code == "rate_limited"
 
 
 @pytest.mark.asyncio
@@ -152,8 +155,9 @@ async def test_verify_expired_raises_and_marks_used() -> None:
     row.used_at = None
     session.scalar.return_value = row
     svc = VerificationService(session, sms=_make_sms_mock())
-    with pytest.raises(CodeError, match="code_expired"):
+    with pytest.raises(CodeError) as ei:
         await svc.verify(target="+8613800138000", code="123456", purpose="register")
+    assert ei.value.code == "code_expired"
     assert row.used_at is not None  # 过期立即作废
 
 

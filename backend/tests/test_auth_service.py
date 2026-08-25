@@ -19,8 +19,15 @@ from app.services.auth_service import (
     create_refresh_token,
     decode_token,
     hash_password,
+    is_legacy_bcrypt,
+    needs_rehash,
+    opportunistic_rehash,
     verify_password,
 )
+try:
+    from app.services.auth_service import _HAS_ARGON2  # noqa: F401
+except ImportError:  # pragma: no cover
+    _HAS_ARGON2 = False
 
 
 def _make_session_mock() -> MagicMock:
