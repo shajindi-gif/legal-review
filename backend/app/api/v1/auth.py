@@ -20,6 +20,7 @@ from app.db.session import get_db
 from app.models.user import Organization, User, UserPlan
 from app.schemas.auth import (
     LoginRequest,
+    PhoneLoginRequest,
     PhoneRegisterRequest,
     PhoneRegisterResponse,
     QuotaStatus,
@@ -192,6 +193,30 @@ async def login(
     """邮箱 + 密码登录。"""
     auth = AuthService(session)
     user = await auth.authenticate(email=body.email, password=body.password)
+    audit = AuditService(session)
+    await audit.log(
+        action="create",
+        actor_id=user.id,
+        actor_role=str(user.role),
+        target_type="session",
+        target_id=user.id,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    tokens = auth.issue_tokens(user)
+    await session.commit()
+    return tokens
+
+
+@router.post("/login/phone", response_model=TokenResponse)
+async def login_phone(
+    body: PhoneLoginRequest,
+    request: Request,
+    session: AsyncSession = Depends(get_db),
+) -> dict:
+    """M0: 手机号 + 密码登录 (无验证码)。"""
+    auth = AuthService(session)
+    user = await auth.authenticate_by_phone(phone=body.phone, password=body.password)
     audit = AuditService(session)
     await audit.log(
         action="create",

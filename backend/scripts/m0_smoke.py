@@ -54,7 +54,18 @@ async def main():
     print("=== M0 smoke: clean state ===")
 
     async def clean(s):
-        await s.execute(delete(User).where(User.phone.in_([PHONE, TARGET])))
+        # 先清掉上次 smoke 留下的 user (会被 audit_records 外键引用)
+        from sqlalchemy import text
+        u = await s.scalar(select(User).where(User.phone.in_([PHONE, TARGET])))
+        if u is not None:
+            await s.execute(text("DELETE FROM audit_records WHERE actor_id = :uid"), {"uid": u.id})
+            await s.execute(text("DELETE FROM user_login_events WHERE user_id = :uid"), {"uid": u.id})
+            await s.execute(text("DELETE FROM refresh_tokens WHERE user_id = :uid"), {"uid": u.id})
+            await s.execute(text("DELETE FROM user_plans WHERE user_id = :uid"), {"uid": u.id})
+            await s.execute(text("DELETE FROM user_events WHERE user_id = :uid"), {"uid": u.id})
+            await s.execute(text("DELETE FROM user_acquisition_sources WHERE user_id = :uid"), {"uid": u.id})
+            await s.execute(delete(User).where(User.id == u.id))
+            await s.execute(text("DELETE FROM organizations WHERE id = :oid"), {"oid": u.organization_id})
         await s.execute(delete(VerificationCode).where(VerificationCode.target == TARGET))
         await s.commit()
         code_hash = bcrypt.hashpw(CODE.encode(), bcrypt.gensalt(rounds=10)).decode()
@@ -94,13 +105,14 @@ async def main():
     status, me = http("GET", "/api/v1/auth/me", token=access)
     print("  ->", status, json.dumps(me, ensure_ascii=False)[:400])
     assert status == 200
-    assert me.get("phone") in (PHONE, TARGET)
-    assert me.get("phone_verified_at") is not None
-    assert me.get("status") == "active"
+    assert me.get("id") == user_id
+    assert me.get("role") == "submitter"
+    assert me.get("plan_tier") == "free"
+    assert me.get("quota_daily") == 3
 
-    print("\n=== 3. POST /api/v1/auth/login (phone + password) ===")
-    status, login_body = http("POST", "/api/v1/auth/login", {
-        "identifier": PHONE,
+    print("\n=== 3. POST /api/v1/auth/login/phone (new user) ===")
+    status, login_body = http("POST", "/api/v1/auth/login/phone", {
+        "phone": PHONE,
         "password": PASSWORD,
     })
     print("  ->", status, json.dumps(login_body, ensure_ascii=False)[:400])

@@ -292,6 +292,34 @@ class AuthService:
         await self._session.refresh(user, attribute_names=["plan"])
         return user
 
+    async def authenticate_by_phone(self, *, phone: str, password: str) -> User:
+        """手机号 + 密码登录 (M0 增量)。
+
+        与 authenticate 行为一致:
+        - 自动识别 argon2id / bcrypt
+        - 登录成功后旧 bcrypt 透明升级
+        - 仅 query 条件从 email 改为 phone (已归一化为 +86...)
+        """
+        from app.utils.phone import normalize_phone
+        phone_norm = normalize_phone(phone)
+        user = await self._session.scalar(select(User).where(User.phone == phone_norm))
+        if user is None:
+            raise AuthError("手机号或密码错误")
+        if not verify_password(password, user.password_hash):
+            raise AuthError("手机号或密码错误")
+        if str(user.status) != str(UserStatus.ACTIVE):
+            raise AuthError(f"账号状态异常: {user.status}")
+
+        new_hash = opportunistic_rehash(user, password)
+        if new_hash is not None:
+            user.password_hash = new_hash
+            user.password_changed_at = datetime.now(UTC).replace(tzinfo=None)
+
+        user.last_login_at = datetime.now(UTC).replace(tzinfo=None)
+        await self._session.flush()
+        await self._session.refresh(user, attribute_names=["plan"])
+        return user
+
     async def get_user_by_id(self, user_id: UUID) -> User:
         """按 ID 查询用户。"""
         user = await self._session.get(User, user_id)

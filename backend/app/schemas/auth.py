@@ -111,3 +111,10 @@ class PhoneRegisterResponse(BaseModel):
     refresh_token: str
     token_type: str = "bearer"
     expires_in: int
+
+
+class PhoneLoginRequest(BaseModel):
+    """手机号 + 密码登录请求 (M0)。"""
+
+    phone: str = Field(min_length=8, max_length=32)
+    password: str = Field(min_length=8, max_length=128)
