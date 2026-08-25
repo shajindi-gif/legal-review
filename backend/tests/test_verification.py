@@ -117,7 +117,7 @@ async def test_send_code_daily_limit_blocks() -> None:
     # cooldown None, day_count 10 (>= max) — 第二次 scalar 调 day_count
     session.scalar.side_effect = [None, 10]
     svc = VerificationService(session, sms=sms)
-    with pytest.raises(CodeError) as ei:
+    with pytest.raises(RateLimitedError) as ei:
         await svc.send_code(target="+8613800138003", purpose="register")
     assert ei.value.code == "rate_limited"
 
