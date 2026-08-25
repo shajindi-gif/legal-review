@@ -240,7 +240,7 @@ class VerificationService:
             _log.info("verify_code_not_found", target=mask_phone(target), purpose=purpose)
             raise CodeError("invalid_code", "验证码错误或已失效", http_status=400)
 
-        if row.expires_at < now:
+        if row.expires_at < (now if row.expires_at.tzinfo is None else now.replace(tzinfo=row.expires_at.tzinfo)):
             # 过期, 直接作废
             row.used_at = now
             await self._session.flush()
