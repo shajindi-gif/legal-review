@@ -44,12 +44,9 @@ systemctl enable --now docker
 
 # 3. 项目代码 -------------------------------------------------------
 log "[3/7] 拉取项目代码"
+REPO_URL="https://github.com/shajindi-gif/legal-review.git"
 if [[ ! -d "$PROJECT_DIR" ]]; then
-    echo "  请先手动 clone 代码到服务器:"
-    echo "    git clone git@github.com:shajindi-gif/legal-review.git $PROJECT_DIR"
-    echo "  若服务器未配置 GitHub SSH key,改用 https:"
-    echo "    git clone https://github.com/shajindi-gif/legal-review.git $PROJECT_DIR"
-    die "未自动 git clone,等用户填 repo"
+    git clone "$REPO_URL" "$PROJECT_DIR"
 fi
 cd "$PROJECT_DIR/deploy"
 git pull --ff-only || true
