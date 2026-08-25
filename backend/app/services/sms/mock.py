@@ -31,10 +31,14 @@ class MockSMSProvider(SMSProvider):
     name = "mock"
 
     def __init__(self, *, expose_code: bool | None = None) -> None:
-        # 默认: APP_ENV != production 时允许返回 mock_code; production 一律隐藏
+        # 优先级: 显式参数 > EXPOSE_MOCK_SMS_CODE 环境变量 > APP_ENV 默认
         if expose_code is None:
-            env = os.environ.get("APP_ENV", "development").lower()
-            expose_code = env != "production"
+            flag = os.environ.get("EXPOSE_MOCK_SMS_CODE", "").lower()
+            if flag in ("1", "true", "yes", "on"):
+                expose_code = True
+            else:
+                env = os.environ.get("APP_ENV", "development").lower()
+                expose_code = env != "production"
         self._expose_code = expose_code
 
     async def send_code(

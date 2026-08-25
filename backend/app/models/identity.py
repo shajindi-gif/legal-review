@@ -35,6 +35,7 @@ from sqlalchemy.dialects.postgresql import INET, JSONB, UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin
+from app.models.user import User  # OAuthIdentity.user 关系需要 User 类 (避免循环: User 不反向 import)
 
 
 # ============================================================
@@ -74,7 +75,7 @@ class OAuthIdentity(TimestampMixin, Base):
     raw_profile: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     last_used_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
-    user: Mapped[Any] = relationship(lazy="selectin")
+    user: Mapped[User | None] = relationship(lazy="selectin")
 
     def __repr__(self) -> str:
         return f"<OAuthIdentity {self.provider}:{self.provider_user_id} user={self.user_id}>"
