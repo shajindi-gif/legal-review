@@ -78,6 +78,20 @@ class QuotaExceededError(AppError):
         super().__init__(code="quota_exceeded", message=message, http_status=429)
 
 
+class RateLimitedError(AppError):
+    """限流触发。"""
+
+    def __init__(self, message: str = "请求过于频繁, 请稍后再试") -> None:
+        super().__init__(code="rate_limited", message=message, http_status=429)
+
+
+class CodeError(AppError):
+    """验证码相关错误。"""
+
+    def __init__(self, code: str, message: str, http_status: int = 400) -> None:
+        super().__init__(code=code, message=message, http_status=http_status)
+
+
 class ValidationError(AppError):
     def __init__(self, message: str) -> None:
         super().__init__(code="validation_error", message=message, http_status=422)

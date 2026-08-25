@@ -44,6 +44,9 @@ dependencies = [
     "bcrypt>=4.1.0",
     "pyjwt>=2.8.0",
     "email-validator>=2.0.0",
+    "argon2-cffi>=23.1.0",  # M0: 新用户密码 hash (向后兼容 bcrypt)
+    "cryptography>=42.0.0",  # M1: Fernet 加密 OAuth token, 提前装
+    "authlib>=1.3.0",  # M1: OAuth client, 提前装
 ]
 
 [project.optional-dependencies]

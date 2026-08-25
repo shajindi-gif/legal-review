@@ -11,6 +11,7 @@ from app.api.v1 import health as health_router
 from app.core.config import get_settings
 from app.core.errors import AppError, error_response
 from app.core.logging import bind_trace_id, get_logger, setup_logging
+from app.core.redis import close_redis
 from app.db.session import dispose_engine
 
 
@@ -23,6 +24,7 @@ async def lifespan(app: FastAPI):
     yield
     logger.info("app_stopping")
     await dispose_engine()
+    await close_redis()
 
 
 def create_app() -> FastAPI:

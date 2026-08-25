@@ -43,9 +43,13 @@ def _decode(token: str) -> dict:
 # ============== bcrypt ==============
 
 
-def test_hash_password_returns_bcrypt_hash() -> None:
+def test_hash_password_returns_strong_hash() -> None:
+    """M0 之后: 新用户走 Argon2id, 旧环境降级到 bcrypt。"""
     h = hash_password("hello12345")
-    assert h.startswith("$2b$") or h.startswith("$2a$")
+    if _HAS_ARGON2:
+        assert h.startswith("$argon2id$")
+    else:
+        assert h.startswith("$2b$") or h.startswith("$2a$")
     assert h != "hello12345"
 
 

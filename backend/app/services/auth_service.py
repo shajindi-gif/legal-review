@@ -27,21 +27,98 @@ from app.core.constants import OrganizationType, PlanTier, UserRole, UserStatus
 from app.core.errors import AuthError, ConflictError, NotFoundError
 from app.models.user import Organization, User, UserPlan
 
-# ============== 密码哈希 ==============
+# ============== 密码哈希 (Argon2id + bcrypt 双算法兼容) ==============
+
+# bcrypt 历史哈希 (老用户, 由 0003 之前的数据)
+# argon2id 哈希 (M0 之后的新用户, 优先)
+#
+# 哈希前缀约定:
+#   $argon2id$...  → Argon2id
+#   $2b$ / $2a$    → bcrypt
+#
+# opportunistic rehash: 登录成功时若命中 bcrypt, 后台异步重哈希为 Argon2id
+
+import bcrypt
+import structlog
+
+try:
+    from argon2 import PasswordHasher as _Argon2PasswordHasher
+    from argon2.exceptions import (
+        InvalidHashError,
+        VerifyMismatchError,
+    )
+    _HAS_ARGON2 = True
+except ImportError:  # noqa: BLE001
+    _HAS_ARGON2 = False
+    _Argon2PasswordHasher = None
+    InvalidHashError = Exception
+    VerifyMismatchError = Exception
+
+
+_log = structlog.get_logger("auth.password")
+_argon2_hasher = _Argon2PasswordHasher() if _HAS_ARGON2 else None
 
 
 def hash_password(plain: str) -> str:
-    """bcrypt 哈希密码（cost=12）。"""
+    """新用户统一使用 Argon2id, 失败时回退 bcrypt (确保历史路径继续工作)。"""
+    if _HAS_ARGON2:
+        try:
+            return _argon2_hasher.hash(plain)
+        except Exception:  # noqa: BLE001
+            _log.warning("argon2_hash_failed_fallback_bcrypt")
     salt = bcrypt.gensalt(rounds=12)
     return bcrypt.hashpw(plain.encode("utf-8"), salt).decode("utf-8")
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    """校验明文密码与哈希是否匹配。"""
-    try:
-        return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
-    except (ValueError, TypeError):
+    """根据哈希前缀自动选择算法; 始终不会抛异常。"""
+    if not hashed:
         return False
+    if hashed.startswith("$argon2id$") or hashed.startswith("$argon2i$") or hashed.startswith("$argon2$"):
+        if not _HAS_ARGON2:
+            _log.error("argon2_hash_present_but_lib_missing")
+            return False
+        try:
+            _argon2_hasher.verify(hashed, plain)
+            return True
+        except VerifyMismatchError:
+            return False
+        except (InvalidHashError, Exception):  # noqa: BLE001
+            return False
+    if hashed.startswith("$2"):
+        try:
+            return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+        except (ValueError, TypeError):
+            return False
+    return False
+
+
+def is_legacy_bcrypt(hashed: str) -> bool:
+    """是否使用旧 bcrypt, 用于登录成功后做 opportunistic rehash。"""
+    return bool(hashed) and hashed.startswith("$2")
+
+
+def needs_rehash(hashed: str) -> bool:
+    """是否需要把 hash 升级到当前推荐算法。"""
+    if not _HAS_ARGON2:
+        return False
+    if hashed.startswith("$argon2id$"):
+        try:
+            return _argon2_hasher.check_needs_rehash(hashed)
+        except (InvalidHashError, Exception):  # noqa: BLE001
+            return True
+    return True
+
+
+def opportunistic_rehash(user: "User", plain: str) -> str | None:
+    """登录成功后调用: 旧 bcrypt 用户自动升级到 Argon2id。
+
+    返回新 hash 字符串 (调用方负责写回 DB), 不需要升级则返回 None。
+    """
+    if not is_legacy_bcrypt(user.password_hash) and not needs_rehash(user.password_hash):
+        return None
+    new_hash = hash_password(plain)
+    return new_hash
 
 
 # ============== JWT ==============
@@ -186,7 +263,12 @@ class AuthService:
         return user
 
     async def authenticate(self, *, email: str, password: str) -> User:
-        """邮箱 + 密码登录；返回 User。"""
+        """邮箱 + 密码登录；返回 User。
+
+        M0 增强:
+        - 自动识别 argon2id / bcrypt 哈希
+        - 登录成功后若 hash 是旧 bcrypt, 透明升级到 argon2id
+        """
         user = await self._session.scalar(select(User).where(User.email == email))
         if user is None:
             msg = "邮箱或密码错误"
@@ -197,6 +279,13 @@ class AuthService:
         if str(user.status) != str(UserStatus.ACTIVE):
             msg = f"账号状态异常: {user.status}"
             raise AuthError(msg)
+
+        # opportunistic rehash: 旧 bcrypt 升级到 argon2id
+        new_hash = opportunistic_rehash(user, password)
+        if new_hash is not None:
+            user.password_hash = new_hash
+            user.password_changed_at = datetime.now(UTC).replace(tzinfo=None)
+
         # 更新最后登录时间
         user.last_login_at = datetime.now(UTC).replace(tzinfo=None)
         await self._session.flush()
