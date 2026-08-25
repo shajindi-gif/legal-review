@@ -3,7 +3,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, field_validator
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -91,19 +91,22 @@ class Settings(BaseSettings):
     max_hallucination_rate: float = 0.05
 
     # ---- CORS ----
-    cors_origins: list[str] = [
+    # 逗号分隔字符串(pydantic-settings 对 list 类型要求 JSON 数组,
+    # 改用 str 存储 + property 返回 list,兼容 .env 逗号格式)
+    cors_origins: str = ""
+
+    _default_cors_origins: list[str] = [
         "http://localhost:3000", "http://127.0.0.1:3000",
         "http://localhost:3080", "http://127.0.0.1:3080",
         "https://legalai86.com.cn", "https://www.legalai86.com.cn",
     ]
 
-    @field_validator("cors_origins", mode="before")
-    @classmethod
-    def parse_cors_origins(cls, v):
-        """兼容逗号分隔字符串和 JSON 数组两种环境变量格式。"""
-        if isinstance(v, str):
-            return [o.strip() for o in v.split(",") if o.strip()]
-        return v
+    @property
+    def cors_origin_list(self) -> list[str]:
+        """解析 cors_origins 字符串为 list,空则返回默认值。"""
+        if not self.cors_origins:
+            return self._default_cors_origins
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
     @property
     def sandbox_path(self) -> Path:
