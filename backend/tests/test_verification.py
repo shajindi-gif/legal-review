@@ -92,7 +92,7 @@ async def test_send_code_cooldown_blocks_second_request() -> None:
     sms.send_code.assert_awaited()
 
     # 第二次: 触发 60s 冷却
-    with pytest.raises(CodeError) as ei:
+    with pytest.raises(RateLimitedError) as ei:
         await svc.send_code(target="+8613800138000", purpose="register")
     assert ei.value.code == "rate_limited"
 
