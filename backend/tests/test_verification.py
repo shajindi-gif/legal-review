@@ -116,7 +116,7 @@ async def test_send_code_daily_limit_blocks() -> None:
     sms = _make_sms_mock()
     # cooldown None, ip 0, day_count 10 (>= max)
     session.scalar.side_effect = [None, 0, 10]
-    svc = VerificationService(session, sms=_make_sms_mock())
+    svc = VerificationService(session, sms=sms)
     with pytest.raises(CodeError) as ei:
         await svc.send_code(target="+8613800138003", purpose="register")
     assert ei.value.code == "rate_limited"
@@ -192,8 +192,9 @@ async def test_verify_wrong_code_increments_attempt() -> None:
     row.used_at = None
     session.scalar.return_value = row
     svc = VerificationService(session, sms=_make_sms_mock())
-    with pytest.raises(CodeError, match="invalid_code"):
+    with pytest.raises(CodeError) as ei:
         await svc.verify(target="+8613800138000", code="000000", purpose="register")
+    assert ei.value.code == "invalid_code"
     assert row.attempt_count == 1
 
 
