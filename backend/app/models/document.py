@@ -34,6 +34,12 @@ class Document(UUIDPkMixin, TimestampMixin, SoftDeleteMixin, Base):
     uploaded_by: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=False
     )
+    # M16.1: 多租户隔离列 — 冗余存储, 避免 JOIN tasks
+    # (回填时从 review_tasks.organization_id 复制)
+    organization_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
     parsed_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     parse_status: Mapped[ParseStatus] = mapped_column(
         String(16), nullable=False, default="pending"

@@ -17,7 +17,7 @@ const variants: Record<Variant, string> = {
   outline:
     "border border-brand-300 bg-white text-brand-700 hover:bg-brand-50",
   ghost: "text-brand-700 hover:bg-brand-50",
-  destructive: "bg-red-600 text-white hover:bg-red-700",
+  destructive: "bg-danger-600 text-white hover:bg-danger-700",
   link: "text-brand-600 underline-offset-4 hover:underline",
 };
 

@@ -5,7 +5,14 @@ import { NextResponse, type NextRequest } from "next/server";
  * 无 auth cookie（lr_token）时将受保护路由重定向到 /login。
  * token 在客户端登录时由 lib/auth.ts 同步写入 cookie，供此处的服务端读取。
  */
-const PROTECTED = ["/dashboard", "/upload", "/review", "/report", "/admin"];
+const PROTECTED = [
+  "/dashboard",
+  "/upload",
+  "/review",
+  "/report",
+  "/admin",
+  "/notifications",
+];
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -33,8 +40,18 @@ export const config = {
     "/review/:path*",
     "/report/:path*",
     "/admin/:path*",
+    "/assistant/:path*",
+    "/tasks/:path*",
+    "/reports/:path*",
+    "/documents/:path*",
+    "/notifications/:path*",
     "/dashboard",
     "/upload",
     "/admin",
+    "/assistant",
+    "/tasks",
+    "/reports",
+    "/documents",
+    "/notifications",
   ],
 };

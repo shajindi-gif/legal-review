@@ -5,14 +5,23 @@ import type {
   AuthResponse,
   DocumentRead,
   DocumentUploadResponse,
+  Notification,
+  NotificationListResponse,
+  NotificationUnreadCount,
   Quota,
   ReviewStatus,
+  SearchResponse,
   TaskListResponse,
   TaskReport,
   TaskStatusResponse,
   TaskSummary,
   TokenResponse,
   User,
+  UserFeedback,
+  UserFeedbackCreate,
+  UserFeedbackListResponse,
+  UserFeedbackSummary,
+  UserFeedbackUpdate,
 } from "@/types/api";
 
 const API_BASE_URL =
@@ -29,6 +38,17 @@ api.interceptors.request.use((config) => {
     const token = window.localStorage.getItem("lr_token");
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
+    }
+    // 后端 get_actor 通过 X-User-Id / X-User-Role 头解析 actor（feedback / user_feedback 等端点用）
+    const userRaw = window.localStorage.getItem("lr_user");
+    if (userRaw) {
+      try {
+        const u = JSON.parse(userRaw) as { id?: string; role?: string };
+        if (u.id) config.headers["X-User-Id"] = u.id;
+        if (u.role) config.headers["X-User-Role"] = u.role;
+      } catch {
+        // ignore malformed
+      }
     }
   }
   return config;
@@ -251,6 +271,174 @@ export async function fetchAdminStats(): Promise<AdminStats> {
 export async function fetchAdminUsers(): Promise<AdminUser[]> {
   const { data } = await api.get<AdminUser[]>("/api/v1/admin/users");
   return data;
+}
+
+// ===== Notification (UI-M8 通知中心) =====
+export async function fetchNotifications(
+  params: { page?: number; page_size?: number; only_unread?: boolean } = {},
+): Promise<NotificationListResponse> {
+  try {
+    const { data } = await api.get<NotificationListResponse>("/api/v1/notifications", {
+      params,
+    });
+    return data;
+  } catch (err) {
+    throw new Error(errorMessage(err, "获取通知列表失败"));
+  }
+}
+
+export async function fetchUnreadCount(): Promise<NotificationUnreadCount> {
+  try {
+    const { data } = await api.get<NotificationUnreadCount>(
+      "/api/v1/notifications/unread-count",
+    );
+    return data;
+  } catch (err) {
+    throw new Error(errorMessage(err, "获取未读通知数失败"));
+  }
+}
+
+export async function markNotificationRead(id: string): Promise<Notification> {
+  try {
+    const { data } = await api.post<Notification>(
+      `/api/v1/notifications/${id}/read`,
+    );
+    return data;
+  } catch (err) {
+    throw new Error(errorMessage(err, "标记已读失败"));
+  }
+}
+
+export async function markAllNotificationsRead(): Promise<NotificationUnreadCount> {
+  try {
+    const { data } = await api.post<NotificationUnreadCount>(
+      "/api/v1/notifications/read-all",
+    );
+    return data;
+  } catch (err) {
+    throw new Error(errorMessage(err, "全部已读失败"));
+  }
+}
+
+// ===== UserFeedback (UI-M11 用户反馈中心) =====
+
+export async function submitUserFeedback(
+  payload: UserFeedbackCreate,
+): Promise<UserFeedback> {
+  try {
+    const { data } = await api.post<UserFeedback>("/api/v1/user-feedback", payload);
+    return data;
+  } catch (err) {
+    throw new Error(errorMessage(err, "提交反馈失败"));
+  }
+}
+
+export async function fetchMyFeedback(params: {
+  status?: string;
+  target_kind?: string;
+  page?: number;
+  page_size?: number;
+} = {}): Promise<UserFeedbackListResponse> {
+  try {
+    const { data } = await api.get<UserFeedbackListResponse>(
+      "/api/v1/user-feedback",
+      { params },
+    );
+    return data;
+  } catch (err) {
+    throw new Error(errorMessage(err, "获取反馈列表失败"));
+  }
+}
+
+export async function fetchMyFeedbackSummary(): Promise<UserFeedbackSummary> {
+  try {
+    const { data } = await api.get<UserFeedbackSummary>(
+      "/api/v1/user-feedback/summary",
+    );
+    return data;
+  } catch (err) {
+    throw new Error(errorMessage(err, "获取反馈概览失败"));
+  }
+}
+
+export async function fetchMyFeedbackDetail(id: string): Promise<UserFeedback> {
+  try {
+    const { data } = await api.get<UserFeedback>(`/api/v1/user-feedback/${id}`);
+    return data;
+  } catch (err) {
+    throw new Error(errorMessage(err, "获取反馈详情失败"));
+  }
+}
+
+export async function closeMyFeedback(id: string): Promise<UserFeedback> {
+  try {
+    const { data } = await api.patch<UserFeedback>(
+      `/api/v1/user-feedback/${id}`,
+      { closed: true } satisfies UserFeedbackUpdate,
+    );
+    return data;
+  } catch (err) {
+    throw new Error(errorMessage(err, "关闭反馈失败"));
+  }
+}
+
+// admin 端
+export async function adminListFeedback(params: {
+  status?: string;
+  target_kind?: string;
+  page?: number;
+  page_size?: number;
+} = {}): Promise<UserFeedbackListResponse> {
+  try {
+    const { data } = await api.get<UserFeedbackListResponse>(
+      "/api/v1/admin/user-feedback",
+      { params },
+    );
+    return data;
+  } catch (err) {
+    throw new Error(errorMessage(err, "获取反馈列表失败"));
+  }
+}
+
+export async function adminFeedbackSummary(): Promise<UserFeedbackSummary> {
+  try {
+    const { data } = await api.get<UserFeedbackSummary>(
+      "/api/v1/admin/user-feedback/summary",
+    );
+    return data;
+  } catch (err) {
+    throw new Error(errorMessage(err, "获取反馈概览失败"));
+  }
+}
+
+export async function adminUpdateFeedback(
+  id: string,
+  patch: { status?: string; admin_reply?: string },
+): Promise<UserFeedback> {
+  try {
+    const { data } = await api.patch<UserFeedback>(
+      `/api/v1/admin/user-feedback/${id}`,
+      patch,
+    );
+    return data;
+  } catch (err) {
+    throw new Error(errorMessage(err, "更新反馈失败"));
+  }
+}
+
+// ===== GlobalSearch (UI-M12 ⌘K) =====
+export async function fetchGlobalSearch(
+  q: string,
+  limit = 8,
+): Promise<SearchResponse> {
+  try {
+    const { data } = await api.get<SearchResponse>("/api/v1/search", {
+      params: { q, limit },
+    });
+    return data;
+  } catch (err) {
+    throw new Error(errorMessage(err, "搜索失败"));
+  }
 }
 
 export { API_BASE_URL };

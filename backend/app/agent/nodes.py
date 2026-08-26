@@ -99,6 +99,9 @@ def _parse_risk_item(data: dict[str, Any]) -> RiskItem:
     """从 LLM 输出解析 RiskItem（Pydantic）。
 
     防护：data 非 dict 时返回空 RiskItem。
+
+    UI-M7：读取 LLM 返回的 paragraph_anchor（如 "#p3"），规范化出
+    paragraph_id（"p3"），便于前端按段落 ID 做精准联动。
     """
     if not isinstance(data, dict):
         return RiskItem(
@@ -107,10 +110,20 @@ def _parse_risk_item(data: dict[str, Any]) -> RiskItem:
             confidence=0.0, suggestion="",
         )
     evidence_data = data.get("evidence", {})
+    anchor = data.get("paragraph_anchor") or data.get("anchor")
+    if isinstance(anchor, str):
+        anchor = anchor.strip()
+    paragraph_id = None
+    if isinstance(anchor, str) and anchor.startswith("#") and len(anchor) > 1:
+        paragraph_id = anchor[1:]
+    elif isinstance(anchor, str) and anchor:
+        paragraph_id = anchor
     return RiskItem(
         dimension=data.get("dimension", "content"),  # type: ignore[arg-type]
         risk_type=str(data.get("risk_type", "")),
         severity=data.get("severity", "medium"),  # type: ignore[arg-type]
+        paragraph_id=paragraph_id,
+        paragraph_anchor=anchor if isinstance(anchor, str) else None,
         evidence=_parse_evidence(evidence_data) if evidence_data else Evidence(
             law_name="", article="", original_text="", explanation=""
         ),
@@ -993,6 +1006,10 @@ async def trigger_doc_parse_background(*, task_id: UUID, document_id: UUID) -> N
 
     异常隔离：工作流失败不影响上传 API 响应（已 201 返回），
     失败时更新 task 状态为 FAILED。
+
+    UI-M8：使用 astream(stream_mode="updates") 流式触发，
+    每节点 enter 通知（node_running）由 notifier 单独会话写入，
+    节点运行期间异常被隔离，不影响后续节点与最终状态。
     """
     logger.info(
         "trigger_review_workflow",
@@ -1001,15 +1018,77 @@ async def trigger_doc_parse_background(*, task_id: UUID, document_id: UUID) -> N
     )
     from app.agent.graph import build_review_graph
     from app.agent.state import new_state
+    from app.services.notifier import emit_node_done, emit_node_running
 
     state = new_state(task_id=str(task_id), trace_id=str(task_id))
+
+    # 1. 取 recipient_id（任务提交人 = 通知接收人）
+    recipient_id: UUID | None = None
+    try:
+        async with get_session_factory()() as db:
+            t = (
+                await db.execute(
+                    select(ReviewTask).where(ReviewTask.id == task_id)
+                )
+            ).scalar_one_or_none()
+            if t is not None:
+                recipient_id = t.submitter_id
+    except Exception as e:
+        logger.warning("trigger_load_recipient_failed", error=str(e))
+
+    # 2. 启动图流；每收一个节点 chunk 触发 node_running 与 node_done 通知
+    completed_nodes: set[str] = set()
     try:
         graph = build_review_graph()
-        result = await graph.ainvoke(state)
+        async for chunk in graph.astream(state, stream_mode="updates"):
+            # chunk: dict[str, dict] - {node_name: state_update}
+            for node_name in chunk.keys():
+                if not isinstance(node_name, str) or node_name in completed_nodes:
+                    continue
+                if recipient_id is None:
+                    continue
+                try:
+                    async with get_session_factory()() as ndb:
+                        await emit_node_running(
+                            ndb,
+                            recipient_id=recipient_id,
+                            task_id=task_id,
+                            node_name=node_name,
+                            iteration=state.get("iteration", 0),
+                        )
+                except Exception as e:
+                    logger.warning(
+                        "trigger_notify_running_failed",
+                        node=node_name,
+                        error=str(e),
+                    )
+
+            # 一个节点 chunk 出现 = 该节点已执行完一次更新
+            for node_name in chunk.keys():
+                if not isinstance(node_name, str) or node_name in completed_nodes:
+                    continue
+                completed_nodes.add(node_name)
+                if recipient_id is None:
+                    continue
+                try:
+                    async with get_session_factory()() as ndb:
+                        await emit_node_done(
+                            ndb,
+                            recipient_id=recipient_id,
+                            task_id=task_id,
+                            node_name=node_name,
+                            iteration=state.get("iteration", 0),
+                        )
+                except Exception as e:
+                    logger.warning(
+                        "trigger_notify_done_failed",
+                        node=node_name,
+                        error=str(e),
+                    )
         logger.info(
             "review_workflow_done",
             task_id=str(task_id),
-            nodes_completed=len(result.get("node_outputs", {})),
+            nodes_completed=sorted(completed_nodes),
         )
     except Exception as e:
         logger.error(

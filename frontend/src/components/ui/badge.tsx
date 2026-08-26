@@ -13,9 +13,9 @@ const variantStyles: Record<BadgeVariant, string> = {
   default: "bg-brand-600 text-white",
   secondary: "bg-brand-100 text-brand-800",
   outline: "border border-brand-300 text-brand-700",
-  success: "bg-green-100 text-green-800",
-  warning: "bg-amber-100 text-amber-800",
-  danger: "bg-red-100 text-red-800",
+  success: "bg-success-100 text-success-700",
+  warning: "bg-warning-100 text-warning-700",
+  danger: "bg-danger-100 text-danger-700",
 };
 
 export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {

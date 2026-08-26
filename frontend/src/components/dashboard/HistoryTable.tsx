@@ -3,20 +3,8 @@
 import * as React from "react";
 import Link from "next/link";
 import type { ReviewStatus, TaskSummary } from "@/types/api";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge, isFinished } from "@/components/ui/status-badge";
 import { formatDateTime } from "@/lib/utils";
-
-const statusMap: Record<
-  ReviewStatus,
-  { label: string; variant: "default" | "success" | "warning" | "danger" | "secondary" }
-> = {
-  pending: { label: "排队中", variant: "secondary" },
-  parsing: { label: "解析中", variant: "warning" },
-  running: { label: "审查中", variant: "warning" },
-  completed: { label: "已完成", variant: "success" },
-  done: { label: "已完成", variant: "success" },
-  failed: { label: "失败", variant: "danger" },
-};
 
 export function HistoryTable({
   reviews,
@@ -55,15 +43,14 @@ export function HistoryTable({
         </thead>
         <tbody>
           {reviews.map((r) => {
-            const st = statusMap[r.status] ?? { label: r.status, variant: "secondary" as const };
-            const isDone = r.status === "completed" || r.status === "done";
+            const done = isFinished(r.status);
             return (
               <tr key={r.id} className="border-b border-gray-100 last:border-0">
                 <td className="max-w-[260px] truncate px-3 py-2 font-medium text-gray-800">
                   {r.title}
                 </td>
                 <td className="px-3 py-2">
-                  <Badge variant={st.variant}>{st.label}</Badge>
+                  <StatusBadge status={r.status} withDot />
                 </td>
                 <td className="px-3 py-2 text-gray-500">
                   {r.current_node ?? "—"}
@@ -72,7 +59,7 @@ export function HistoryTable({
                   {formatDateTime(r.submitted_at)}
                 </td>
                 <td className="px-3 py-2">
-                  {isDone ? (
+                  {done ? (
                     <Link
                       href={`/report/${r.id}`}
                       prefetch={false}

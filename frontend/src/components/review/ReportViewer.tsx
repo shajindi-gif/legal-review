@@ -1,55 +1,18 @@
 "use client";
 
 import * as React from "react";
-import { cn } from "@/lib/utils";
+import { TrustBadge } from "@/components/ui/trust-badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { MarkdownContent } from "@/components/ui/markdown-content";
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-function renderMarkdown(md: string): string {
-  const lines = escapeHtml(md).split(/\r?\n/);
-  const html: string[] = [];
-  let inList = false;
-  const closeList = () => {
-    if (inList) {
-      html.push("</ul>");
-      inList = false;
-    }
-  };
-  for (const raw of lines) {
-    const line = raw.trim();
-    if (/^#{3}\s+/.test(line)) {
-      closeList();
-      html.push(`<h3 class="text-base font-semibold mt-4 mb-1">${line.slice(4)}</h3>`);
-    } else if (/^#{2}\s+/.test(line)) {
-      closeList();
-      html.push(`<h2 class="text-lg font-semibold mt-5 mb-1">${line.slice(3)}</h2>`);
-    } else if (/^#\s+/.test(line)) {
-      closeList();
-      html.push(`<h1 class="text-xl font-bold mt-6 mb-2">${line.slice(2)}</h1>`);
-    } else if (/^[-*]\s+/.test(line)) {
-      if (!inList) {
-        html.push('<ul class="list-disc pl-5 my-1 space-y-1">');
-        inList = true;
-      }
-      html.push(`<li>${line.replace(/^[-*]\s+/, "")}</li>`);
-    } else if (line === "") {
-      closeList();
-    } else {
-      closeList();
-      const inline = line
-        .replace(/\*\*(.+?)\*\*/g, '<strong class="font-semibold">$1</strong>')
-        .replace(/`([^`]+)`/g, '<code class="rounded bg-gray-100 px-1 text-sm">$1</code>');
-      html.push(`<p class="my-1.5 leading-relaxed">${inline}</p>`);
-    }
-  }
-  closeList();
-  return html.join("\n");
-}
+/**
+ * ReportViewer —— 审查意见书渲染器。
+ *
+ * 旧实现：`dangerouslySetInnerHTML` + 手写 markdown 解析（§D 删除项）。
+ * 中间实现：react-markdown + rehype-sanitize（§M3/M6 阶段）。
+ * 当前实现：MarkdownContent（UI-M9.1）：开启 GFM，XSS-safe，
+ * 报告尺寸 lg（标题更大、行高更松），无 TrustBadge 缺位。
+ */
 
 export function ReportViewer({
   markdown,
@@ -63,26 +26,37 @@ export function ReportViewer({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-brand-700">审查意见书</h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-lg font-semibold text-brand-700">审查意见书</h2>
+          <TrustBadge kind="ai" />
+        </div>
       </div>
       {loading ? (
-        <div className="flex h-40 items-center justify-center text-sm text-gray-400">
-          报告生成中…
+        <div className="space-y-3 rounded-lg border border-neutral-200 bg-white p-6">
+          <Skeleton className="h-5 w-1/2" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-5/6" />
+          <Skeleton className="h-4 w-2/3" />
+          <Skeleton className="mt-3 h-5 w-1/3" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-3/4" />
         </div>
       ) : error ? (
-        <div className="flex h-40 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-sm text-amber-700">
+        <div
+          role="alert"
+          className="flex h-40 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-sm text-amber-700"
+        >
           {error}
         </div>
       ) : markdown ? (
-        <div
-          className={cn(
-            "prose prose-sm max-w-none rounded-lg border border-gray-200 bg-white p-6",
-            "[&_ul]:my-1.5 [&_ol]:my-1.5",
-          )}
-          dangerouslySetInnerHTML={{ __html: renderMarkdown(markdown) }}
-        />
+        <article
+          data-testid="report-markdown"
+          className="rounded-lg border border-neutral-200 bg-white p-6"
+        >
+          <MarkdownContent size="lg">{markdown}</MarkdownContent>
+        </article>
       ) : (
-        <div className="flex h-40 items-center justify-center rounded-lg border border-dashed border-gray-200 text-sm text-gray-400">
+        <div className="flex h-40 items-center justify-center rounded-lg border border-dashed border-neutral-200 text-sm text-neutral-400">
           报告暂未生成
         </div>
       )}

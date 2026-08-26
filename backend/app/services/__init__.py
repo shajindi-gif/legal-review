@@ -4,11 +4,13 @@ from app.services.audit import AuditService
 from app.services.auth_service import AuthService
 from app.services.quota_service import QuotaService
 from app.services.sandbox import SandboxService, get_sandbox
+from app.services.user_feedback import UserFeedbackService
 
 __all__ = [
     "AuditService",
     "AuthService",
     "QuotaService",
     "SandboxService",
+    "UserFeedbackService",
     "get_sandbox",
 ]

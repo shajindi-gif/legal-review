@@ -1,8 +1,9 @@
-"""FastAPI 依赖注入 - DB session / Sandbox / 审计 / 鉴权。"""
+"""FastAPI 依赖注入 - DB session / Sandbox / 审计 / 鉴权 / 租户上下文。"""
 
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
+from dataclasses import dataclass
 from typing import Literal
 from uuid import UUID
 
@@ -11,10 +12,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AuthError
 from app.db.session import get_db as _get_db
-from app.models.user import User
+from app.models.user import Organization, User
 from app.services.audit import AuditService
 from app.services.auth_service import decode_token
 from app.services.sandbox import SandboxService, get_sandbox
+from app.services.tenant import is_super_admin, load_user_org
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
@@ -122,3 +124,53 @@ def require_role(*allowed_roles: RoleLiteral):
         return current_user
 
     return _guard
+
+
+# ============== M16.1 租户上下文 ==============
+
+
+@dataclass(frozen=True)
+class TenantContext:
+    """当前请求的租户上下文。
+
+    - user: 当前登录用户
+    - org: 用户所属组织 (personal / 团队)
+    - org_id: 便捷访问, 等于 user.organization_id
+    - is_team: 是否为团队型组织 (律所/法务部)
+    - is_super_admin: 是否超级管理员 (跨租户可见)
+    """
+    user: User
+    org: Organization | None
+    org_id: UUID | None
+    is_team: bool
+    is_super_admin: bool
+
+
+async def get_tenant_context(
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> TenantContext:
+    """组合 user + org + 团队/超管标记。
+
+    用法:
+        ctx: TenantContext = Depends(get_tenant_context)
+        stmt = apply_org_filter_with_column(
+            stmt, ctx.user, ctx.org,
+            org_column=ReviewTask.organization_id,
+            user_id_column=ReviewTask.submitter_id,
+        )
+    """
+    org = await load_user_org(session, current_user)
+    super_admin = is_super_admin(current_user)
+    is_team = (
+        org is not None
+        and str(org.type) != "personal"
+        and not super_admin
+    )
+    return TenantContext(
+        user=current_user,
+        org=org,
+        org_id=current_user.organization_id,
+        is_team=is_team,
+        is_super_admin=super_admin,
+    )

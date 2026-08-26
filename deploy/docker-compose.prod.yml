@@ -1,3 +1,24 @@
+# ============================================================
+# legalai86.com.cn 生产环境 Docker Compose
+# ============================================================
+# 包含：
+#   - postgres (pgvector)    法律审查主库
+#   - redis                   缓存 / 队列
+#   - backend                 FastAPI + Uvicorn (8000)
+#   - frontend                Next.js standalone (3081)
+#   - nginx                   反代 + HTTPS (80/443)
+#   - certbot                 (profile=certbot) 自动续期
+#
+# 启动：
+#   docker compose -f docker-compose.prod.yml up -d
+#   docker compose -f docker-compose.prod.yml --profile certbot up -d
+#
+# 注意：
+#   - 所有机密通过 deploy/.env 注入（deploy.sh 自动生成）
+#   - certbot 证书存储于 named volume legal_certbot_conf
+#   - 迁移由 deploy.sh 单独执行（docker exec backend alembic upgrade head）
+# ============================================================
+
 services:
   postgres:
     image: pgvector/pgvector:pg16
@@ -5,36 +26,41 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: legal
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-legal_prod_pass}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
       POSTGRES_DB: legal_review
+      TZ: Asia/Shanghai
     volumes:
       - legal_pg_data:/var/lib/postgresql/data
-      - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ../docker/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U legal -d legal_review"]
-      interval: 5s
-      timeout: 3s
+      interval: 10s
+      timeout: 5s
       retries: 20
+      start_period: 30s
     networks: [appnet]
+    # 不暴露端口到主机（仅容器内网访问，外部走 nginx）
 
   redis:
     image: redis:7-alpine
     container_name: legal-redis
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
     volumes:
       - legal_redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
+      interval: 10s
       timeout: 3s
-      retries: 20
+      retries: 10
+      start_period: 10s
     networks: [appnet]
 
   backend:
     build:
       context: ../backend
       dockerfile: Dockerfile
+    image: legal-review/backend:latest
     container_name: legal-backend
     restart: unless-stopped
     depends_on:
@@ -43,70 +69,127 @@ services:
       redis:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql+asyncpg://legal:${POSTGRES_PASSWORD:-legal_prod_pass}@postgres:5432/legal_review
+      # 数据库（容器内网用 postgres 主机名）
+      DATABASE_URL: postgresql+asyncpg://legal:${POSTGRES_PASSWORD}@postgres:5432/legal_review
+      # Redis
       REDIS_URL: redis://redis:6379/0
-      LLM_PROVIDER: ${LLM_PROVIDER:-mock}
-      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
-      QWEN_API_KEY: ${QWEN_API_KEY:-}
-      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
-      CORS_ORIGINS: ${CORS_ORIGINS:-https://legalai86.com.cn}
-      SANDBOX_ROOT: /app/_sandbox
+      # 应用
       ENVIRONMENT: production
+      DEBUG: "false"
+      SANDBOX_ROOT: /app/_sandbox
+      # 鉴权
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-3600}
+      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-604800}
+      # CORS（生产只允许同域 + www）
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://legalai86.com.cn,https://www.legalai86.com.cn}
+      # LLM（按需填）
+      LLM_PROVIDER: ${LLM_PROVIDER:-mock}
+      LLM_MODEL_TIER: ${LLM_MODEL_TIER:-balanced}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      QWEN_API_KEY: ${QWEN_API_KEY:-}
+      QWEN_BASE_URL: ${QWEN_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+      # Embedding
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-mock}
+      # Agent 硬约束
+      MAX_ITERATION: ${MAX_ITERATION:-5}
+      MIN_CONFIDENCE: ${MIN_CONFIDENCE:-0.7}
     volumes:
       - legal_backend_sandbox:/app/_sandbox
       - legal_backend_uploads:/app/uploads
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
     networks: [appnet]
 
   frontend:
     build:
       context: ../frontend
       dockerfile: Dockerfile
+    image: legal-review/frontend:latest
     container_name: legal-frontend
     restart: unless-stopped
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     environment:
-      NEXT_PUBLIC_API_BASE: /api
+      # 前端通过 nginx 反代 /api/* 到 backend
+      # 这里 BACKEND_URL 仍可设，但只用于前端 build 时注入的 rewrite 默认值
       BACKEND_URL: http://backend:8000
-      ALLOWED_ORIGIN: https://legalai86.com.cn
+      NEXT_PUBLIC_API_BASE: /api
+      # Next.js 16 allowedDevOrigins 已在 next.config.mjs 写死，
+      # 这里不覆盖，避免反代场景 origin 校验错乱
+      NODE_ENV: production
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3081/"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     networks: [appnet]
 
   nginx:
     build:
       context: ./nginx
       dockerfile: Dockerfile
+    image: legal-review/nginx:latest
     container_name: legal-nginx
     restart: unless-stopped
     depends_on:
-      - frontend
       - backend
+      - frontend
     ports:
       - "80:80"
       - "443:443"
     volumes:
+      # 站点配置（只读）
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
-      - ./nginx/ssl:/etc/nginx/ssl:ro
-      - legal_certbot_conf:/etc/letsencrypt
-      - legal_certbot_www:/var/www/certbot
+      # Let's Encrypt 证书（certbot 容器与 nginx 共享）
+      - legal_certbot_conf:/etc/letsencrypt:ro
+      # ACME 挑战目录（certbot 写，nginx 读）
+      - legal_certbot_www:/var/www/certbot:ro
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     networks: [appnet]
 
+  # ============================================================
+  # certbot 自动续期（独立 profile，避免与 nginx 资源抢占）
+  # 启动：docker compose --profile certbot up -d
+  # ============================================================
   certbot:
     image: certbot/certbot:latest
     container_name: legal-certbot
     profiles: ["certbot"]
+    restart: unless-stopped
     volumes:
       - legal_certbot_conf:/etc/letsencrypt
       - legal_certbot_www:/var/www/certbot
-    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $!; done'"
+    entrypoint: /bin/sh -c "trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot; sleep 12h & wait $$\!; done"
 
 volumes:
   legal_pg_data:
+    name: legal_pg_data
   legal_redis_data:
+    name: legal_redis_data
   legal_backend_sandbox:
+    name: legal_backend_sandbox
   legal_backend_uploads:
+    name: legal_backend_uploads
   legal_certbot_conf:
+    name: legal_certbot_conf
   legal_certbot_www:
+    name: legal_certbot_www
 
 networks:
   appnet:
+    name: legal_appnet
     driver: bridge

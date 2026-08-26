@@ -14,15 +14,76 @@
   --color-brand-900: #4c1d95;
   --color-brand-950: #2e1065;
 
+  /* 中性灰阶（UI 文本 / 背景 / 边框统一参考） */
+  --color-neutral-0: #ffffff;
+  --color-neutral-50: #f9fafb;
+  --color-neutral-100: #f3f4f6;
+  --color-neutral-200: #e5e7eb;
+  --color-neutral-300: #d1d5db;
+  --color-neutral-400: #9ca3af;
+  --color-neutral-500: #6b7280;
+  --color-neutral-600: #4b5563;
+  --color-neutral-700: #374151;
+  --color-neutral-800: #1f2937;
+  --color-neutral-900: #111827;
+
+  /* Semantic Colors：业务反馈色（成功 / 警告 / 危险 / 信息） */
+  --color-success-50: #ecfdf5;
+  --color-success-100: #d1fae5;
+  --color-success-500: #10b981;
+  --color-success-600: #059669;
+  --color-success-700: #047857;
+
+  --color-warning-50: #fffbeb;
+  --color-warning-100: #fef3c7;
+  --color-warning-500: #f59e0b;
+  --color-warning-600: #d97706;
+  --color-warning-700: #b45309;
+
+  --color-danger-50: #fef2f2;
+  --color-danger-100: #fee2e2;
+  --color-danger-500: #ef4444;
+  --color-danger-600: #dc2626;
+  --color-danger-700: #b91c1c;
+
+  --color-info-50: #eff6ff;
+  --color-info-100: #dbeafe;
+  --color-info-500: #3b82f6;
+  --color-info-600: #2563eb;
+  --color-info-700: #1d4ed8;
+
+  /* 风险等级色（LegalAI 业务专用） */
+  --color-risk-high: #dc2626;
+  --color-risk-high-bg: #fef2f2;
+  --color-risk-medium: #d97706;
+  --color-risk-medium-bg: #fffbeb;
+  --color-risk-low: #059669;
+  --color-risk-low-bg: #ecfdf5;
+
+  /* 基础语义 */
   --color-background: #ffffff;
   --color-foreground: #1a1a2e;
   --color-muted: #6b7280;
+  --color-muted-foreground: #4b5563;
   --color-card: #ffffff;
+  --color-card-foreground: #1a1a2e;
   --color-border: #e5e7eb;
   --color-ring: #7c3aed;
 
+  /* 字体 */
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  /* 间距 4 / 8 / 12 / 16 / 24 / 32 / 48 / 64 */
+  --spacing-page-x: 24px;
+  --spacing-section-y: 24px;
+  --spacing-card-p: 20px;
+  --spacing-tight: 8px;
+  --spacing-snug: 12px;
+  --spacing-cozy: 16px;
+  --spacing-roomy: 24px;
+  --spacing-loose: 32px;
+  --spacing-grand: 48px;
 }
 
 :root {
@@ -39,5 +100,57 @@
     color: var(--foreground);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* 统一滚动条：克制、不抢眼 */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-neutral-200);
+    border-radius: 8px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-neutral-300);
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  /* 字体层级（通过 utility class 使用，避免每个组件重新写） */
+  .text-display {
+    @apply text-3xl font-semibold tracking-tight text-neutral-900;
+  }
+  .text-page-title {
+    @apply text-2xl font-semibold tracking-tight text-neutral-900;
+  }
+  .text-section-title {
+    @apply text-lg font-semibold text-neutral-900;
+  }
+  .text-card-title {
+    @apply text-base font-semibold text-neutral-900;
+  }
+  .text-body {
+    @apply text-sm text-neutral-700;
+  }
+  .text-meta {
+    @apply text-xs text-neutral-500;
+  }
+  .text-secondary {
+    @apply text-sm text-neutral-500;
+  }
+}
+
+@layer components {
+  /* 焦点环：全局可访问 */
+  .focus-ring {
+    @apply outline-none ring-0 focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white;
+  }
+
+  /* 卡片标准容器：克制、不与 Card 组件冲突 */
+  .surface {
+    @apply rounded-xl border border-neutral-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)];
   }
 }

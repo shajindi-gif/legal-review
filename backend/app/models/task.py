@@ -37,6 +37,12 @@ class ReviewTask(UUIDPkMixin, TimestampMixin, SoftDeleteMixin, Base):
     submitter_org_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False
     )
+    # M16.1: 多租户隔离列 — 与 submitter_org_id 语义一致,
+    # 新代码用 organization_id, 老列保留以避免破坏 FK 引用
+    organization_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
     status: Mapped[TaskStatus] = mapped_column(String(32), nullable=False, default="created")
     current_node: Mapped[str | None] = mapped_column(String(64), nullable=True)
     iteration: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -75,6 +81,11 @@ class ReviewResult(UUIDPkMixin, Base):
     task_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("review_tasks.id"), nullable=False
     )
+    # M16.1: 多租户隔离列 — 通过 task_id → review_tasks 回填
+    organization_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
     agent_name: Mapped[str] = mapped_column(String(64), nullable=False)
     iteration: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     node_status: Mapped[NodeStatus] = mapped_column(String(16), nullable=False)
@@ -101,6 +112,10 @@ class AgentLog(UUIDPkMixin, Base):
     trace_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
     task_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("review_tasks.id"), nullable=True
+    )
+    # M16.1: 多租户隔离列 (nullable — agent_logs.task_id 可空, 关联断时也允许)
+    organization_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), index=True, nullable=True,
     )
     agent_name: Mapped[str] = mapped_column(String(64), nullable=False)
     iteration: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

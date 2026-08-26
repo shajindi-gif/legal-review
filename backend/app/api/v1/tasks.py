@@ -1,9 +1,10 @@
 """任务查询 API - FR-033（任务看板）+ FR-008（解析结果预览）。
 
-鉴权（Sprint 6.4）：
+鉴权 (M16.1 多租户):
 - 必须携带 Authorization: Bearer <access_token>
-- submitter/reviewer 只能看自己的任务
-- supervisor/admin 可看所有任务
+- submitter/reviewer/librarian: 个人虚拟组织下仅看自己; 团队组织看同 org
+- supervisor/admin: 可看所有任务 (老行为, 保留)
+- super_admin: 跨租户 (审计/客服)
 """
 
 from __future__ import annotations
@@ -14,13 +15,14 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, get_db
+from app.api.deps import TenantContext, get_db, get_tenant_context
 from app.core.errors import AppError, NotFoundError
 from app.models.document import Document
 from app.models.task import ReviewResult, ReviewTask
 from app.models.user import User
 from app.schemas.document import DocumentRead
 from app.schemas.task import TaskRead, TaskStatusResponse, TaskListResponse
+from app.services.tenant import apply_org_filter_with_column
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -30,13 +32,35 @@ def _can_view_all(user: User) -> bool:
     return str(user.role) in {"supervisor", "admin"}
 
 
-async def _load_task(
-    db: AsyncSession, task_id: UUID, *, current_user: User
-) -> ReviewTask:
-    """查询任务并校验访问权限。
+def _filter_by_tenant(
+    stmt, ctx: TenantContext, *, with_submitter: bool = True
+):
+    """根据租户上下文过滤任务。
 
-    - admin/supervisor：可看所有任务
-    - submitter/reviewer/librarian：仅可看自己的任务
+    - super_admin: 不过滤
+    - 团队组织: WHERE organization_id = ctx.org_id
+    - personal 组织: WHERE submitter_id = ctx.user.id (老行为)
+    """
+    user_id_col = ReviewTask.submitter_id if with_submitter else None
+    return apply_org_filter_with_column(
+        stmt,
+        ctx.user,
+        ctx.org,
+        org_column=ReviewTask.organization_id,
+        user_id_column=user_id_col,
+    )
+
+
+async def _load_task(
+    db: AsyncSession, task_id: UUID, *, ctx: TenantContext
+) -> ReviewTask:
+    """查询任务并校验访问权限 (M16.1 多租户版)。
+
+    - admin/supervisor: 可看所有任务
+    - submitter/reviewer/librarian:
+        - personal 组织: 仅可看自己的
+        - 团队组织: 可看同 org 的所有
+    - super_admin: 跨租户
     """
     result = await db.execute(
         select(ReviewTask).where(
@@ -46,7 +70,20 @@ async def _load_task(
     task = result.scalar_one_or_none()
     if task is None:
         raise NotFoundError("ReviewTask", str(task_id))
-    if not _can_view_all(current_user) and task.submitter_id != current_user.id:
+
+    if _can_view_all(ctx.user):
+        return task
+    if ctx.is_super_admin:
+        return task
+
+    # 团队组织: 同 org 即可见
+    if ctx.is_team:
+        if task.organization_id != ctx.org_id:
+            raise NotFoundError("ReviewTask", str(task_id))
+        return task
+
+    # personal 组织: 仅 submitter 可见
+    if task.submitter_id != ctx.user.id:
         raise NotFoundError("ReviewTask", str(task_id))
     return task
 
@@ -57,20 +94,18 @@ async def list_tasks(
     page_size: int = Query(20, ge=1, le=100),
     status: str | None = Query(None, description="按状态过滤"),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    ctx: TenantContext = Depends(get_tenant_context),
 ) -> TaskListResponse:
-    """查询任务列表（FR-033 看板）。
-
-    - submitter/reviewer/librarian：仅返回自己的任务
-    - supervisor/admin：返回全部
-    """
+    """查询任务列表 (M16.1 多租户版)。"""
     base = select(ReviewTask).where(ReviewTask.deleted_at.is_(None))
     count_base = select(func.count(ReviewTask.id)).where(
         ReviewTask.deleted_at.is_(None)
     )
-    if not _can_view_all(current_user):
-        base = base.where(ReviewTask.submitter_id == current_user.id)
-        count_base = count_base.where(ReviewTask.submitter_id == current_user.id)
+
+    # M16.1 租户过滤
+    base = _filter_by_tenant(base, ctx)
+    count_base = _filter_by_tenant(count_base, ctx)
+
     if status:
         base = base.where(ReviewTask.status == status)
         count_base = count_base.where(ReviewTask.status == status)
@@ -91,10 +126,10 @@ async def list_tasks(
 async def get_task(
     task_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    ctx: TenantContext = Depends(get_tenant_context),
 ) -> TaskRead:
     """查询任务详情。"""
-    task = await _load_task(db, task_id, current_user=current_user)
+    task = await _load_task(db, task_id, ctx=ctx)
     return TaskRead.model_validate(task, from_attributes=True)
 
 
@@ -102,10 +137,10 @@ async def get_task(
 async def get_task_status(
     task_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    ctx: TenantContext = Depends(get_tenant_context),
 ) -> TaskStatusResponse:
     """查询任务状态与进度。"""
-    task = await _load_task(db, task_id, current_user=current_user)
+    task = await _load_task(db, task_id, ctx=ctx)
     progress_map = {
         "doc_parse": 0.1,
         "doc_classify": 0.2,
@@ -137,10 +172,10 @@ async def get_task_status(
 async def list_documents(
     task_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    ctx: TenantContext = Depends(get_tenant_context),
 ) -> list[DocumentRead]:
     """查询任务下的全部文件。"""
-    task = await _load_task(db, task_id, current_user=current_user)
+    task = await _load_task(db, task_id, ctx=ctx)
     result = await db.execute(
         select(Document).where(
             Document.task_id == task.id, Document.deleted_at.is_(None)
@@ -155,10 +190,10 @@ async def get_document(
     task_id: UUID,
     document_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    ctx: TenantContext = Depends(get_tenant_context),
 ) -> DocumentRead:
     """查询单个文件（含 parsed_json 解析结果）。"""
-    task = await _load_task(db, task_id, current_user=current_user)
+    task = await _load_task(db, task_id, ctx=ctx)
     result = await db.execute(
         select(Document).where(
             Document.id == document_id,
@@ -180,14 +215,14 @@ async def get_document(
 async def get_task_report(
     task_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    ctx: TenantContext = Depends(get_tenant_context),
 ) -> dict:
-    """拉取任务的最终报告。
+    """拉取任务的最终报告 (M16.1 多租户版)。
 
     来源：report_generation 节点的 ReviewResult.output_json.report_markdown。
     若任务尚未到 report_generation 节点，返回 404 + 明确错误。
     """
-    task = await _load_task(db, task_id, current_user=current_user)
+    task = await _load_task(db, task_id, ctx=ctx)
     result = await db.execute(
         select(ReviewResult)
         .where(

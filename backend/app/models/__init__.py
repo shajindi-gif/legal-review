@@ -12,6 +12,7 @@ from app.models.identity import (
     VerificationCode,
 )
 from app.models.legal import LegalClause, LegalDocument
+from app.models.notification import Notification
 from app.models.platform import (
     AuditRecord,
     EvalRun,
@@ -21,6 +22,7 @@ from app.models.platform import (
 )
 from app.models.task import AgentLog, ReviewResult, ReviewTask
 from app.models.user import Order, Organization, Payment, User, UserPlan
+from app.models.user_feedback import UserFeedback
 
 __all__ = [
     "AccountLinkPending",
@@ -32,6 +34,7 @@ __all__ = [
     "GoldenDataset",
     "LegalClause",
     "LegalDocument",
+    "Notification",
     "OAuthIdentity",
     "Order",
     "Organization",
@@ -44,6 +47,7 @@ __all__ = [
     "User",
     "UserAcquisitionSource",
     "UserEvent",
+    "UserFeedback",
     "UserLoginEvent",
     "UserPlan",
     "VerificationCode",

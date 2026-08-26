@@ -31,6 +31,16 @@ class RiskItem(BaseModel):
     dimension: RiskDimension
     risk_type: str = Field(description="如 违法设置行政许可")
     severity: RiskSeverity
+    # UI-M7：文档原文锚点（来自 doc_parse 节点的 body_paragraphs[].id / .anchor）
+    # 前端 Review 详情页用于把风险与正文段落精准联动
+    paragraph_id: str | None = Field(
+        default=None,
+        description="段落 ID（与 document_json.body_paragraphs[].id 对齐，如 'p3'）",
+    )
+    paragraph_anchor: str | None = Field(
+        default=None,
+        description="HTML 锚点（与 document_json.body_paragraphs[].anchor 对齐，如 '#p3'）",
+    )
     evidence: Evidence
     confidence: float = Field(ge=0.0, le=1.0)
     suggestion: str = Field(description="修改建议")
