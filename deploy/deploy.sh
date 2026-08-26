@@ -169,7 +169,7 @@ ok "postgres / redis / backend / frontend 已起，nginx 待证书"
 log "    等待 backend /health (最多 90s) ..."
 HEALTHY=0
 for i in $(seq 1 45); do
-    if docker exec legal-backend curl -fsS http://127.0.0.1:8000/health >/dev/null 2>&1; then
+    if docker exec legal-backend python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=3).status==200 else 1)" >/dev/null 2>&1; then
         HEALTHY=1; break
     fi
     sleep 2

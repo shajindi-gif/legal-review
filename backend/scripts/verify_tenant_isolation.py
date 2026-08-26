@@ -30,10 +30,10 @@ BASE_URL = "http://127.0.0.1:8000"
 
 
 async def login(client: httpx.AsyncClient, phone: str, code: str = "000000") -> str | None:
-    """演示模式：直接用 phone 登录（M0003 身份系统）。"""
+    """手机号 + 密码登录（M0 身份系统，演示环境无短信验证码）。"""
     r = await client.post(
-        f"{BASE_URL}/api/v1/auth/login-by-phone",
-        json={"phone": phone, "verification_code": code},
+        f"{BASE_URL}/api/v1/auth/login/phone",
+        json={"phone": phone, "password": code},
     )
     if r.status_code == 200:
         return r.json().get("access_token")

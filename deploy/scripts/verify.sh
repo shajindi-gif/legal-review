@@ -56,14 +56,14 @@ else
     fail "GET / -> $code"
 fi
 
-# 3. 后端 health
+# 3. 后端 health（nginx /health 反代到 backend）
 echo ""
 echo "[3/7] 后端健康"
-health=$(curl -sS --noproxy '*' "$BASE_URL/api/v1/health" 2>/dev/null || echo "")
+health=$(curl -sS --noproxy '*' "$BASE_URL/health" 2>/dev/null || echo "")
 if echo "$health" | grep -q '"status":"ok"'; then
-    pass "/api/v1/health = ok"
+    pass "/health = ok"
 else
-    fail "/api/v1/health 异常: $health"
+    fail "/health 异常: $health"
 fi
 
 # 4. 登录 API（用 demo 账号探测 401/200/422，不要求成功）
@@ -72,9 +72,9 @@ echo "[4/7] 登录 API 可达"
 code=$(curl -sS -o /dev/null -w '%{http_code}' --noproxy '*' \
     -H "Content-Type: application/json" \
     -d '{"phone":"13800000000","verification_code":"000000"}' \
-    "$BASE_URL/api/v1/auth/login-by-phone" 2>/dev/null || echo "000")
+    "$BASE_URL/api/v1/auth/login/phone" 2>/dev/null || echo "000")
 if [[ "$code" =~ ^(200|400|401|422|429)$ ]]; then
-    pass "POST /api/v1/auth/login-by-phone -> $code (路由可达)"
+    pass "POST /api/v1/auth/login/phone -> $code (路由可达)"
 else
     fail "POST /api/v1/auth/login-by-phone -> $code"
 fi
@@ -82,30 +82,35 @@ fi
 # 5. 多租户隔离（仅探测 SQL：两个 org 看到不同 task 列表）
 echo ""
 echo "[5/7] 多租户隔离冒烟"
-if docker exec legal-backend python /app/scripts/verify_tenant_isolation.py 2>/dev/null; then
+rc=0
+docker exec legal-backend python /app/scripts/verify_tenant_isolation.py >/dev/null 2>&1 || rc=$?
+if [[ $rc -eq 0 ]]; then
     pass "M16.1 多租户隔离通过"
+elif [[ $rc -eq 2 ]]; then
+    echo "${YEL}! M16.1 无演示账号，跳过隔离冒烟（非异常）${NC}"
 else
-    warn "M16.1 验证脚本未运行（需先创建 scripts/verify_tenant_isolation.py）"
+    warn "M16.1 多租户隔离验证失败 (rc=$rc)"
 fi
 
-# 6. 证书
+# 6. 证书有效期（宿主机读 certbot 卷，nginx 镜像无 openssl）
 echo ""
 echo "[6/7] 证书有效期"
-if docker exec legal-nginx test -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" 2>/dev/null; then
-    expiry=$(docker exec legal-nginx openssl x509 -in "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" -noout -enddate 2>/dev/null | cut -d= -f2)
+CERT_FILE="/var/lib/docker/volumes/legal_certbot_conf/_data/live/$DOMAIN/fullchain.pem"
+if [[ -f "$CERT_FILE" ]]; then
+    expiry=$(openssl x509 -in "$CERT_FILE" -noout -enddate 2>/dev/null | cut -d= -f2)
     if [[ -n "$expiry" ]]; then
         pass "证书到期: $expiry"
     else
         warn "证书存在但无法解析到期日"
     fi
 else
-    fail "证书文件未就位 /etc/letsencrypt/live/$DOMAIN/fullchain.pem"
+    fail "证书文件未就位 $CERT_FILE"
 fi
 
 # 7. alembic 迁移版本
 echo ""
 echo "[7/7] alembic 迁移版本"
-current=$(docker exec legal-backend alembic current 2>/dev/null | grep -oE '[0-9a-f]{12}' | head -1 || echo "")
+current=$(docker exec legal-backend alembic current 2>/dev/null | grep -oE '[0-9a-f]{4,12}' | head -1 || echo "")
 if [[ -n "$current" ]]; then
     pass "alembic current = $current"
 else

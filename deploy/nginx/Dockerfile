@@ -14,9 +14,9 @@ FROM nginx:1.27-alpine
 RUN sed -i 's#dl-cdn.alpinelinux.org#mirrors.tencentyun.com#g' \
         /etc/apk/repositories
 
-# 装 bash + inotify-tools（监控证书变更触发 nginx reload）
+# 装 bash + inotify-tools + wget（监控证书变更触发 nginx reload；wget 供健康检查）
 # 续期由独立 certbot 容器完成；本容器只负责反代 + 证书变更自动 reload
-RUN apk add --no-cache bash inotify-tools
+RUN apk add --no-cache bash inotify-tools wget
 
 # 站点配置（conf.d 由 docker-compose 挂载进来，本文件不留默认站点）
 RUN rm -f /etc/nginx/conf.d/default.conf
@@ -27,9 +27,9 @@ RUN mkdir -p /docker-entrypoint.d
 COPY reload-on-cert-change.sh /docker-entrypoint.d/reload-on-cert-change.sh
 RUN chmod +x /docker-entrypoint.d/reload-on-cert-change.sh
 
-# 健康检查：HEAD / 应 301（HTTPS 重定向场景下 HTTP 80 端口正常）
-HEALTHCHECK --interval=30s --timeout=5s --retries=5 \
-    CMD wget --spider --quiet http://127.0.0.1/ || exit 1
+# 健康检查：HTTPS 自检（HTTP 80 会 301 跳转 HTTPS，跟随时证书 host 校验失败，故直接打 443）
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD wget -q --no-check-certificate --spider https://127.0.0.1/ || exit 1
 
 EXPOSE 80 443
 
