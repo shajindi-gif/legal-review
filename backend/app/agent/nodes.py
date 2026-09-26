@@ -249,6 +249,8 @@ async def _run_llm_node(
     state["prompt_versions"][agent_name] = spec.version
 
     # 5. 持久化：更新任务 + 写审查结果 + 写 agent 日志
+    # M16.1 多租户：ReviewResult.organization_id 是 NOT NULL FK，
+    # 必须从 task 回填（task_id 已知但 INSERT 时直接取 task 列更稳）。
     async with get_session_factory()() as db:
         task_result = await db.execute(
             select(ReviewTask).where(ReviewTask.id == UUID(task_id))
@@ -257,9 +259,10 @@ async def _run_llm_node(
         if task is not None:
             task.current_node = next_node
             task.status = task_status
-            # 5a. 审查结果
+            # 5a. 审查结果 — 回填 organization_id（与 task 同源，满足 FK + 隔离）
             db.add(ReviewResult(
                 task_id=UUID(task_id),
+                organization_id=task.organization_id,
                 agent_name=agent_name,
                 iteration=output.iteration,
                 node_status=output.node_status,
@@ -269,7 +272,7 @@ async def _run_llm_node(
                 confidence=output.confidence,
                 duration_ms=output.duration_ms,
             ))
-            # 5b. Agent 日志
+            # 5b. Agent 日志 — 同样回填 organization_id（M16.1 一致性）
             usage = raw.get("_usage", {}) if isinstance(raw, dict) else {}
             tokens_in = usage.get("prompt_tokens")
             tokens_out = usage.get("completion_tokens")
@@ -281,6 +284,7 @@ async def _run_llm_node(
             db.add(AgentLog(
                 trace_id=UUID(trace_id),
                 task_id=UUID(task_id),
+                organization_id=task.organization_id,
                 agent_name=agent_name,
                 iteration=output.iteration,
                 prompt_version=spec.version,
@@ -627,9 +631,11 @@ async def authority_review_node(state: ReviewState) -> ReviewState:
     """
     doc_json = state.get("document_json") or {}
     legal_context = state.get("legal_context") or []
+    issuing_authority = (doc_json.get("issuing_authority") or "").strip() or "未知制定机关"
+    doc_title = (doc_json.get("title") or "").strip() or "未命名文件"
     variables = {
-        "issuing_authority": doc_json.get("issuing_authority", ""),
-        "doc_title": doc_json.get("title", ""),
+        "issuing_authority": issuing_authority,
+        "doc_title": doc_title,
         "legal_context": _format_legal_context(legal_context),
     }
 

@@ -282,16 +282,25 @@ class PromptManager:
     def _validate_variables(
         self, spec: PromptSpec, variables: dict[str, Any]
     ) -> None:
-        """校验必填变量。"""
+        """校验必填变量。
+
+        空字符串 / 纯空白也视为缺失（避免 LLM 收到"制定机关："这种空内容）。
+        """
         missing: list[str] = []
         for var_def in spec.variables:
             name = var_def.get("name")
             required = var_def.get("required", False)
-            if required and (name not in variables or variables[name] is None):
+            if not required:
+                continue
+            value = variables.get(name)
+            if value is None:
+                missing.append(name)
+                continue
+            if isinstance(value, str) and not value.strip():
                 missing.append(name)
         if missing:
             raise ValidationError(
-                f"Prompt {spec.prompt_key}@{spec.version} 缺失必填变量: {missing}"
+                f"Prompt {spec.prompt_key}@{spec.version} 缺失必填变量或变量为空: {missing}"
             )
 
     # ---------- DB 同步与激活 ----------

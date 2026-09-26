@@ -29,6 +29,7 @@ from app.models.task import ReviewTask
 from app.models.user import User
 from app.schemas.document import DocumentUploadResponse
 from app.services.audit import AuditService
+from app.services.core_user_bridge import ensure_local_user_for_core_principal
 from app.services.quota_service import QuotaService
 from app.services.sandbox import SandboxService
 
@@ -74,6 +75,10 @@ async def upload_document(
     task_id = uuid4()
     trace_id = uuid4()
 
+    # Strangler 双跑期：Core 用户需先在本地 users 表落影子记录，
+    # 否则 quota_service.get_or_create_plan 触发 user_plans_user_id_fkey FK violation。
+    local_user = await ensure_local_user_for_core_principal(db, current_user)
+
     quota = QuotaService(db)
     await quota.consume(current_user.id)
 
@@ -86,7 +91,7 @@ async def upload_document(
         task_id=task_id, filename=file.filename or "unnamed", content=content
     )
 
-    org_id = current_user.organization_id
+    org_id = local_user.organization_id
     if org_id is None:
         raise AppError(
             http_status=400,
@@ -101,6 +106,7 @@ async def upload_document(
         title=title or (file.filename or "未命名任务"),
         submitter_id=current_user.id,
         submitter_org_id=org_id,
+        organization_id=org_id,
         status=TaskStatus.PARSING,
         current_node="doc_parse",
         priority=priority,
@@ -117,6 +123,7 @@ async def upload_document(
         storage_path=storage_path_rel,
         mime_type=file.content_type,
         uploaded_by=current_user.id,
+        organization_id=org_id,
         parse_status=ParseStatus.PARSING,
     )
     db.add(document)
