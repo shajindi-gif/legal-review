@@ -442,3 +442,69 @@ export async function fetchGlobalSearch(
 }
 
 export { API_BASE_URL };
+
+// ===== Billing / Payment =====
+import type {
+  CreateOrderRequest,
+  CreateOrderResponse,
+  OrderListItem,
+  OrderStatusResponse,
+  PricingItem,
+} from "@/types/api";
+
+export async function fetchPricing(): Promise<PricingItem[]> {
+  try {
+    const { data } = await api.get<PricingItem[]>("/api/v1/billing/pricing");
+    return data;
+  } catch (err) {
+    throw new Error(errorMessage(err, "获取定价失败"));
+  }
+}
+
+export async function createOrder(
+  req: CreateOrderRequest,
+): Promise<CreateOrderResponse> {
+  try {
+    const { data } = await api.post<CreateOrderResponse>(
+      "/api/v1/billing/orders",
+      req,
+    );
+    return data;
+  } catch (err) {
+    throw new Error(errorMessage(err, "创建订单失败"));
+  }
+}
+
+export async function fetchOrderStatus(orderId: string): Promise<OrderStatusResponse> {
+  try {
+    const { data } = await api.get<OrderStatusResponse>(
+      `/api/v1/billing/orders/${orderId}`,
+    );
+    return data;
+  } catch (err) {
+    throw new Error(errorMessage(err, "查询订单状态失败"));
+  }
+}
+
+export async function fetchMyOrders(limit = 20): Promise<OrderListItem[]> {
+  try {
+    const { data } = await api.get<OrderListItem[]>("/api/v1/billing/orders", {
+      params: { limit },
+    });
+    return data;
+  } catch (err) {
+    throw new Error(errorMessage(err, "获取订单列表失败"));
+  }
+}
+
+/** 获取微信 JSAPI 静默授权跳转地址（微信内置浏览器内跳转后回带 openid）。 */
+export async function fetchWechatOauthUrl(state = "/pricing"): Promise<string> {
+  try {
+    const { data } = await api.get<{ url: string }>("/api/v1/billing/wechat/oauth/url", {
+      params: { state },
+    });
+    return data.url;
+  } catch (err) {
+    throw new Error(errorMessage(err, "获取微信授权地址失败"));
+  }
+}

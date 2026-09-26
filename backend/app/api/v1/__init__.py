@@ -5,9 +5,11 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from app.api.v1 import (
+    account,
     admin_user_feedback,
     audit,
     auth,
+    billing,
     documents,
     eval,
     feedback,
@@ -21,6 +23,7 @@ from app.api.v1 import (
 
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(auth.router)
+api_router.include_router(account.router)
 api_router.include_router(documents.router)
 api_router.include_router(legal.router)
 api_router.include_router(tasks.router)
@@ -32,5 +35,6 @@ api_router.include_router(notifications.router)
 api_router.include_router(search.router)
 api_router.include_router(user_feedback.router)
 api_router.include_router(admin_user_feedback.router)
+api_router.include_router(billing.router)
 
 __all__ = ["api_router"]

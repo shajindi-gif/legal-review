@@ -43,6 +43,59 @@ class PaymentStatus(StrEnum):
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     REFUNDED = "refunded"
+    CLOSED = "closed"
+
+
+# ============== 支付渠道 ==============
+class PaymentChannel(StrEnum):
+    WECHAT = "wechat"    # 微信支付（V3）
+    ALIPAY = "alipay"    # 支付宝（RSA2）
+
+
+class PayScene(StrEnum):
+    """支付场景（按设备 / 环境分流，前端检测后传入）。
+
+    - NATIVE：电脑扫码（微信 Native 二维码）
+    - JSAPI：微信内 H5 调起（需 openid）
+    - H5：手机浏览器跳转（微信 H5）
+    - PAGE：电脑网页跳转（支付宝电脑网站支付）
+    - WAP：手机网页跳转（支付宝手机网站支付）
+    """
+
+    NATIVE = "native"
+    JSAPI = "jsapi"
+    H5 = "h5"
+    PAGE = "page"
+    WAP = "wap"
+
+
+# 各渠道允许的支付场景
+CHANNEL_SCENES: dict[PaymentChannel, tuple[PayScene, ...]] = {
+    PaymentChannel.WECHAT: (PayScene.NATIVE, PayScene.JSAPI, PayScene.H5),
+    PaymentChannel.ALIPAY: (PayScene.PAGE, PayScene.WAP),
+}
+
+
+# ============== 套餐定价（单位：分，避免浮点误差）==============
+# key = PlanTier，value = {周期天数: 价格分}
+# 299 元/月（Pro）、1999 元/月（Enterprise）
+PLAN_PRICING_CENTS: dict[str, dict[int, int]] = {
+    PlanTier.PRO: {
+        30: 29900,        # 299 元 / 月
+        90: 83700,        # 279 元 / 月（季付 93 折）
+        365: 299000,      # 约 249 元 / 月（年付送 2 个月）
+    },
+    PlanTier.ENTERPRISE: {
+        30: 199900,       # 1999 元 / 月
+    },
+}
+
+# 各套餐开通后的每日审查配额（-1 = 不限）
+PLAN_QUOTA_DAILY: dict[str, int] = {
+    PlanTier.FREE: 3,
+    PlanTier.PRO: -1,
+    PlanTier.ENTERPRISE: -1,
+}
 
 
 # ============== 单位类型 ==============

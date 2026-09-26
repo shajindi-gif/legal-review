@@ -331,3 +331,55 @@ export interface SearchResponse {
   documents: SearchDocumentHit[];
   reports: SearchReportHit[];
 }
+
+// ===== Billing / Payment =====
+export type PaymentChannel = "wechat" | "alipay";
+export type PaymentStatus = "pending" | "succeeded" | "failed" | "refunded" | "closed";
+export type PayType = "native" | "jsapi" | "h5" | "page" | "wap";
+
+export interface PricingItem {
+  plan_tier: PlanTier;
+  period_days: number;
+  amount_cents: number;
+  amount_cny: number;
+  label: string;
+}
+
+export interface CreateOrderRequest {
+  plan_tier: PlanTier;
+  period_days: number;
+  channel: PaymentChannel;
+  pay_type?: PayType;
+  openid?: string;
+  client_ip?: string;
+}
+
+export interface CreateOrderResponse {
+  order_id: string;
+  order_no: string;
+  pay_type: PayType;
+  qr_code: string;
+  pay_url: string;
+  jsapi_params: Record<string, string>;
+  amount_cents: number;
+  channel: PaymentChannel;
+}
+
+export interface OrderStatusResponse {
+  order_id: string;
+  status: PaymentStatus;
+  plan_tier: PlanTier;
+  amount_cny: number;
+  paid_at: string | null;
+}
+
+export interface OrderListItem {
+  order_id: string;
+  status: PaymentStatus;
+  plan_tier: PlanTier;
+  amount_cny: number;
+  period_days: number;
+  channel: PaymentChannel;
+  paid_at: string | null;
+  created_at: string;
+}
