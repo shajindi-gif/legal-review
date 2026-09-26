@@ -147,22 +147,67 @@ curl -X POST http://localhost:8002/api/v1/billing/orders \
 
 ## 三、生产环境部署
 
-### 3.1 更新 .env.local
+### 3.0 一键脚本（推荐）
+
+仓库已提供三段 SSH 脚本，分别负责「增量推送代码」「安全写入支付凭证」「端到端验收」，从你**本地机器**执行（要求你已经能 SSH 到服务器）：
+
+| 脚本 | 何时跑 | 作用 |
+|---|---|---|
+| `deploy/scripts/sync.sh` | 改了代码 | git pull → 选择性 build → 重启 backend/frontend → 健康检查 |
+| `deploy/scripts/install-payment-env.sh` | 改了支付凭证 | 把支付字段精确写入 `deploy/.env`，只重启 backend |
+| `deploy/scripts/verify-payment.sh` | 凭证写完后 | 下单→轮询→主动查单→健康检查，输出 PASS/FAIL |
+
+**最小流程**（在 `legal-review/` 仓库根目录）：
+
+```bash
+# 1) 推代码
+SSH_HOST=root@124.221.229.12 bash deploy/scripts/sync.sh
+
+# 2) 写支付凭证（一次性把全部 WXPAY_*/ALIPAY_* 环境变量塞进来）
+SSH_HOST=root@124.221.229.12 \
+  WXPAY_ENABLED=true WXPAY_MCHID=1117431351 WXPAY_APPID=wx0c3559d4d20037d3 \
+  WXPAY_APPSECRET=... WXPAY_API_V3_KEY=... \
+  WXPAY_MCH_SERIAL_NO=... WXPAY_MCH_PRIVATE_KEY="$(cat apiclient_key.pem)" \
+  WXPAY_PUBLIC_KEY=... WXPAY_PUBLIC_KEY_ID=... \
+  ALIPAY_ENABLED=true ALIPAY_APP_ID=... \
+  ALIPAY_PRIVATE_KEY=... ALIPAY_PUBLIC_KEY=... \
+  bash deploy/scripts/install-payment-env.sh
+
+# 3) 验收
+SSH_HOST=root@124.221.229.12 DOMAIN=legalai86.com.cn \
+  TOKEN=$(...) \
+  bash deploy/scripts/verify-payment.sh
+```
+
+**重要约定**：
+- `install-payment-env.sh` 仅替换 `WXPAY_*/ALIPAY_*` 字段；`JWT_SECRET`、`POSTGRES_PASSWORD` 等其他字段**不动**
+- 多行 PEM 必须转成单行（真实换行 → 字面 `\n`）；脚本会自动校验并拒绝带真实换行的私钥
+- 写完后 `deploy/.env` 自动 `chmod 600`，旧版本备份为 `deploy/.env.bak-YYYYMMDD-HHMMSS`
+
+### 3.1 手动方式（不推荐）
+
+如果你不想用脚本：
 
 ```bash
 ssh root@124.221.229.12
-vim /opt/legal-review/backend/.env.local
-# 填入真实密钥（不要提交到 git）
+cd /opt/legal-review
+git pull --ff-only
+docker compose -f deploy/docker-compose.prod.yml build backend frontend
+docker compose -f deploy/docker-compose.prod.yml up -d --no-deps backend frontend
+docker exec legal-backend alembic upgrade head
+docker exec legal-backend python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/health').status)"
 ```
 
-### 3.2 重启服务
+支付凭证仍要写到 `deploy/.env`（容器读它），不是 `backend/.env.local`：
 
 ```bash
-cd /opt/legal-review
-docker compose -f deploy/docker-compose.prod.yml restart backend
+ssh root@124.221.229.12
+vim /opt/legal-review/deploy/.env
+# 追加 WXPAY_*/ALIPAY_* 段（不要覆盖 JWT_SECRET / POSTGRES_PASSWORD）
+docker compose -f deploy/docker-compose.prod.yml up -d --no-deps backend
 ```
 
-### 3.3 验证回调
+### 3.2 验证回调
 
 ```bash
 docker compose -f deploy/docker-compose.prod.yml logs -f backend | grep payment
