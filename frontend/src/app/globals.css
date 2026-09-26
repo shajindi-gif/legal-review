@@ -103,6 +103,25 @@
     text-rendering: optimizeLegibility;
   }
 
+  /* 键盘可操作性：手写 select / textarea 统一焦点环（组件 Input 已自带） */
+  select:focus-visible,
+  textarea:focus-visible {
+    outline: 2px solid var(--color-brand-500);
+    outline-offset: 1px;
+  }
+
+  /* 尊重系统「减少动态效果」偏好 */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
   /* 统一滚动条：克制、不抢眼 */
   ::-webkit-scrollbar {
     width: 8px;

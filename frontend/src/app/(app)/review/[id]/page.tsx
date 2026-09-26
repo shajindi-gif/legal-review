@@ -11,6 +11,8 @@ import {
   PanelRight,
   PanelRightClose,
   FileText,
+  ChevronsLeft,
+  ChevronsRight,
 } from "lucide-react";
 import {
   fetchReport,
@@ -293,7 +295,11 @@ export default function ReviewPage() {
             aria-label={leftOpen ? "折叠节点栏" : "展开节点栏"}
             className="ml-auto h-7 w-7 p-0"
           >
-            {leftOpen ? "«" : "»"}
+            {leftOpen ? (
+              <ChevronsLeft className="h-4 w-4" />
+            ) : (
+              <ChevronsRight className="h-4 w-4" />
+            )}
           </Button>
         </div>
         {leftOpen ? (

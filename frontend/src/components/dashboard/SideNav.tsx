@@ -18,6 +18,7 @@ import {
   MessageSquareQuote,
   Settings,
   User as UserIcon,
+  CreditCard,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/lib/auth";
@@ -89,6 +90,13 @@ export function SideNav({ open = true, onNavigate }: SideNavProps) {
       </div>
 
       <div className="space-y-1 border-t border-neutral-200 px-3 py-3">
+        <BottomItem
+          href="/pricing"
+          label="套餐与计费"
+          icon={CreditCard}
+          active={pathname === "/pricing"}
+          onNavigate={onNavigate}
+        />
         <BottomItem
           href="/dashboard"
           label="Usage"

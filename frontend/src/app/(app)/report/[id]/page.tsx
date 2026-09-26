@@ -95,6 +95,7 @@ export default function ReportPage() {
           markdown={report?.report_markdown}
           loading={isLoading}
           error={report ? null : errMsg}
+          exportName={detail?.title ?? "审查报告"}
         />
 
         {/* 报告反馈：仅当报告存在时显示 */}

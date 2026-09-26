@@ -7,7 +7,7 @@ import { useAuthStore } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 
 export function LoginForm() {
   const router = useRouter();
@@ -33,11 +33,8 @@ export function LoginForm() {
   }
 
   return (
-    <Card className="w-full max-w-md">
-      <CardHeader>
-        <CardTitle>登录账户</CardTitle>
-      </CardHeader>
-      <CardContent>
+    <Card className="w-full max-w-md shadow-sm">
+      <CardContent className="p-6 sm:p-8">
         <form onSubmit={onSubmit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <Label htmlFor="email">邮箱</Label>
@@ -71,9 +68,9 @@ export function LoginForm() {
           <Button type="submit" disabled={loading} className="w-full">
             {loading ? "登录中…" : "登录"}
           </Button>
-          <p className="text-center text-sm text-gray-500">
+          <p className="text-center text-sm text-neutral-500">
             还没有账号？{" "}
-            <a href="/register" className="text-brand-600 hover:underline">
+            <a href="/register" className="font-medium text-brand-700 hover:underline">
               立即注册
             </a>
           </p>

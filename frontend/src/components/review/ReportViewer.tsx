@@ -18,11 +18,28 @@ export function ReportViewer({
   markdown,
   loading,
   error,
+  exportName,
 }: {
   markdown?: string;
   loading?: boolean;
   error?: string | null;
+  /** 导出文件名（默认「审查意见书」），由报告页传入任务标题。 */
+  exportName?: string;
 }) {
+  const handleExport = () => {
+    if (!markdown) return;
+    const safe = (exportName || "审查意见书").replace(/[\\/:*?"<>|]/g, "_");
+    const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${safe}.md`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
@@ -30,6 +47,16 @@ export function ReportViewer({
           <h2 className="text-lg font-semibold text-brand-700">审查意见书</h2>
           <TrustBadge kind="ai" />
         </div>
+        {markdown ? (
+          <button
+            type="button"
+            onClick={handleExport}
+            className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-2.5 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50"
+            data-testid="report-export"
+          >
+            导出 Markdown
+          </button>
+        ) : null}
       </div>
       {loading ? (
         <div className="space-y-3 rounded-lg border border-neutral-200 bg-white p-6">
