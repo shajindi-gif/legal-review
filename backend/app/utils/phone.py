@@ -69,3 +69,25 @@ def mask_phone(phone: str) -> str:
     if phone.startswith("+86") and len(phone) >= 13:
         return f"+86 {phone[3:7]}****{phone[-2:]}"
     return phone[:3] + "****" + phone[-2:]
+
+
+def normalize_email(raw: str) -> str:
+    """邮箱规范化：仅 strip + 小写，不做任何别名折叠。
+
+    按需求约束，不删除加号后缀、不忽略句点（`a.b@x` 与 `ab@x` 是不同地址）。
+    """
+    if not raw or "@" not in raw:
+        raise ValidationError("邮箱格式不正确")
+    return raw.strip().lower()
+
+
+def mask_email(email: str) -> str:
+    """脱敏: a***@example.com"""
+    if not email or "@" not in email:
+        return "***"
+    local, domain = email.split("@", 1)
+    if len(local) <= 1:
+        head = local
+    else:
+        head = local[0] + "***"
+    return f"{head}@{domain}"

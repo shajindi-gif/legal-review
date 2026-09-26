@@ -25,8 +25,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import CodeError, RateLimitedError, ValidationError
 from app.models.identity import VerificationCode
+from app.services.email import EmailProvider, get_email_provider
 from app.services.sms import SMSProvider, get_sms_provider
-from app.utils.phone import mask_phone
+from app.utils.phone import mask_email, mask_phone, normalize_email
 
 _log = structlog.get_logger("auth.verification")
 
@@ -40,7 +41,8 @@ PER_PHONE_DAILY_MAX = 10          # 10 次 / 天 / 手机号
 MAX_VERIFY_ATTEMPTS = 5           # 5 次错误作废
 
 VALID_PURPOSES = frozenset({
-    "register", "login", "reset_password", "bind_phone", "change_phone",
+    "register", "login", "reset_password",
+    "bind_phone", "change_phone", "bind_email", "change_email",
 })
 
 
@@ -58,9 +60,11 @@ class VerificationService:
         self,
         session: AsyncSession,
         sms: SMSProvider | None = None,
+        email: EmailProvider | None = None,
     ) -> None:
         self._session = session
         self._sms = sms or get_sms_provider()
+        self._email = email or get_email_provider()
 
     @staticmethod
     def _generate_code() -> str:
@@ -98,6 +102,8 @@ class VerificationService:
             raise ValidationError(f"不支持的 purpose: {purpose}")
         if channel == "sms" and not target:
             raise ValidationError("手机号不能为空")
+        if channel == "email":
+            target = normalize_email(target)
 
         now = datetime.now(UTC).replace(tzinfo=None)
 
@@ -174,7 +180,7 @@ class VerificationService:
         self._session.add(row)
         await self._session.flush()
 
-        # ---- 发送 (sms 走 provider, email M0 留接口) ----
+        # ---- 发送 ----
         mock_code: str | None = None
         if channel == "sms":
             result = await self._sms.send_code(
@@ -188,12 +194,21 @@ class VerificationService:
                 raise CodeError("sms_send_failed", "短信发送失败, 请稍后重试", http_status=502)
             mock_code = result.mock_code
         else:
-            # Email M0 暂未实现, 抛错
-            raise CodeError("email_not_implemented", "邮箱验证码暂未上线", http_status=501)
+            result = await self._email.send_code(
+                email=target,
+                code=code,
+                purpose=purpose,
+                ttl_seconds=CODE_TTL_SECONDS,
+            )
+            if not result.success:
+                _log.error("email_send_failed", target=mask_email(target), error=result.error_message)
+                raise CodeError("email_send_failed", "邮件发送失败, 请稍后重试", http_status=502)
+            mock_code = result.mock_code
 
+        masked = mask_phone(target) if channel == "sms" else mask_email(target)
         _log.info(
             "verify_code_sent",
-            target=mask_phone(target),
+            target=masked,
             purpose=purpose,
             channel=channel,
             ttl=CODE_TTL_SECONDS,
