@@ -1,6 +1,17 @@
-"""AuthService 单元测试 - bcrypt / JWT / 注册 / 登录 / 刷新。"""
+"""AuthService 单元测试 - bcrypt / JWT / 注册 / 登录 / 刷新。
+
+Strangler 双跑（Phase 4 Pilot）后：本地 AuthService 已冻结（git 保留、停止路由注册），
+注册/登录/鉴权逻辑由 yance-core packages/auth 承担。本文件全部用例标记 skip，
+保留供 git 回滚后还原；Core 侧对应单测见 /Users/shajindi/yance-core/packages/auth/tests。
+"""
 
 from __future__ import annotations
+
+import pytest
+
+pytestmark = pytest.mark.skip(
+    reason="Strangler 双跑：本地 AuthService 已冻结，由 yance-core packages/auth 承担",
+)
 
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock

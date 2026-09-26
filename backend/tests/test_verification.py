@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.core.errors import CodeError, RateLimitedError, ValidationError
+from app.services.email import EmailResult
 from app.services.sms import SMSResult
 from app.services.verification import (
     CODE_LENGTH,
@@ -36,6 +37,19 @@ def _make_sms_mock() -> MagicMock:
         )
     )
     return sms
+
+
+def _make_email_mock() -> MagicMock:
+    email = MagicMock()
+    email.send_code = AsyncMock(
+        return_value=EmailResult(
+            success=True,
+            provider="mock",
+            message_id="mock-456",
+            mock_code="654321",
+        )
+    )
+    return email
 
 
 # ============== 验证码生成 ==============
@@ -123,14 +137,16 @@ async def test_send_code_daily_limit_blocks() -> None:
 
 
 @pytest.mark.asyncio
-async def test_send_code_email_not_implemented() -> None:
+async def test_send_code_email_channel_success() -> None:
     session = _make_session_mock()
-    # 让 send_code 顺利走到 "email 暂未实现" 校验, 不要被 cooldown 拦截
+    email_mock = _make_email_mock()
+    # cooldown=None, day_count=0
     session.scalar.side_effect = [None, 0]
-    svc = VerificationService(session, sms=_make_sms_mock())
-    with pytest.raises(CodeError) as ei:
-        await svc.send_code(target="a@b.com", channel="email", purpose="register")
-    assert ei.value.code == "email_not_implemented"
+    svc = VerificationService(session, sms=_make_sms_mock(), email=email_mock)
+    result = await svc.send_code(target="a@b.com", channel="email", purpose="login")
+    assert result.expires_in == CODE_TTL_SECONDS
+    assert result.mock_code == "654321"
+    email_mock.send_code.assert_awaited()
 
 
 # ============== verify 校验 ==============
