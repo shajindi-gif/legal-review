@@ -32,6 +32,8 @@ SSH_HOST=${SSH_HOST:-root@124.221.229.12}
 PROJECT_DIR=${PROJECT_DIR:-/opt/legal-review}
 DEPLOY_DIR="$PROJECT_DIR/deploy"
 ENV_FILE="$DEPLOY_DIR/.env"
+# ALIPAY_ONLY=1：跳过 WXPAY_* 全部必填校验（只验 ALIPAY_* 三项）
+ALIPAY_ONLY=${ALIPAY_ONLY:-0}
 
 RED='\033[1;31m'; GRN='\033[1;32m'; YEL='\033[1;33m'; CYN='\033[1;36m'; NC='\033[0m'
 log()  { printf '\n${CYN}== %s ==${NC}\n' "$*"; }
@@ -47,11 +49,16 @@ log "[0/4] 预检"
 command -v ssh >/dev/null 2>&1 || die "缺少 ssh 客户端"
 
 # 必填项检查（标量字段；私钥类允许为空，提示缺失）
-REQUIRED=(WXPAY_ENABLED ALIPAY_ENABLED
-           WXPAY_MCHID WXPAY_APPID WXPAY_APPSECRET WXPAY_API_V3_KEY
-           WXPAY_MCH_SERIAL_NO WXPAY_MCH_PRIVATE_KEY
-           WXPAY_PUBLIC_KEY WXPAY_PUBLIC_KEY_ID
-           ALIPAY_APP_ID ALIPAY_PRIVATE_KEY ALIPAY_PUBLIC_KEY)
+if [[ "$ALIPAY_ONLY" == "1" ]]; then
+    log "ALIPAY_ONLY=1：只校验 ALIPAY_*，跳过全部 WXPAY_*"
+    REQUIRED=(ALIPAY_ENABLED ALIPAY_APP_ID ALIPAY_PRIVATE_KEY ALIPAY_PUBLIC_KEY)
+else
+    REQUIRED=(WXPAY_ENABLED ALIPAY_ENABLED
+               WXPAY_MCHID WXPAY_APPID WXPAY_APPSECRET WXPAY_API_V3_KEY
+               WXPAY_MCH_SERIAL_NO WXPAY_MCH_PRIVATE_KEY
+               WXPAY_PUBLIC_KEY WXPAY_PUBLIC_KEY_ID
+               ALIPAY_APP_ID ALIPAY_PRIVATE_KEY ALIPAY_PUBLIC_KEY)
+fi
 MISSING=()
 for k in "${REQUIRED[@]}"; do
     if [[ -z "${!k:-}" ]]; then
@@ -75,8 +82,10 @@ check_pem_oneline() {
         die "$k 长度 $n 异常短（应 ≥ 100 字符）"
     fi
 }
-check_pem_oneline WXPAY_MCH_PRIVATE_KEY
-check_pem_oneline WXPAY_PUBLIC_KEY
+if [[ "$ALIPAY_ONLY" != "1" ]]; then
+    check_pem_oneline WXPAY_MCH_PRIVATE_KEY
+    check_pem_oneline WXPAY_PUBLIC_KEY
+fi
 check_pem_oneline ALIPAY_PRIVATE_KEY
 check_pem_oneline ALIPAY_PUBLIC_KEY
 
