@@ -26,7 +26,7 @@ async def close_redis() -> None:
     global _client
     if _client is not None:
         try:  # noqa: SIM105 - best-effort 异步关闭, suppress 不支持 await
-            await _client.aclose()
+            await _client.close()
         except Exception:  # noqa: BLE001
             pass
         _client = None

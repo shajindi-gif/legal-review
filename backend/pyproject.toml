@@ -110,7 +110,7 @@ strict_equality = true
 # 无类型存根的重型三方库：本地可不安装（OCR 引擎极大、pdf2image 为可选项），
 # 关闭其缺失导入报错，避免 mypy 需要完整依赖才能静态检查
 [[tool.mypy.overrides]]
-module = ["paddleocr", "paddleocr.*", "pdf2image"]
+module = ["paddleocr", "paddleocr.*", "pdf2image", "sentence_transformers"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
