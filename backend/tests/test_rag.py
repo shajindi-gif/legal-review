@@ -36,7 +36,7 @@ def test_hybrid_search_sql_contains_required_clauses() -> None:
     assert "ORDER BY c.embedding <=> :emb" in sql
     # 关键词召回（pg_trgm similarity）
     assert "similarity(c.content, :query)" in sql
-    assert "c.content %% :query" in sql
+    assert "c.content % :query" in sql  # asyncpg 无 psycopg2 式 %% 转义，单 % 即可
     # 加权融合
     assert ":vector_weight" in sql
     assert ":keyword_weight" in sql

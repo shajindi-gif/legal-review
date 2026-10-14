@@ -105,7 +105,10 @@ def test_get_active_loads_prompt_spec() -> None:
     assert isinstance(spec, PromptSpec)
     assert spec.prompt_key == "authority_review"
     assert spec.version == "v1.0.0"
-    assert spec.model_name == "qwen3.7-max"  # registry.yaml 统一管理，不再 YAML 硬编码
+    # 硬约束：模型名不入 registry.yaml（model_name 仅文档参考，应为 None），
+    # 运行时路由由 LLM gateway 按 model_tier 统一映射
+    assert spec.model_name is None
+    assert spec.model_tier == "strong"
     assert spec.temperature == 0.2
     assert "issuing_authority" in spec.template
     # 模板含审查要点

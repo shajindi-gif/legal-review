@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterable
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
 
@@ -107,10 +108,16 @@ def _clear_env(monkeypatch: pytest.MonkeyPatch, key: str) -> None:
 
 
 def test_factory_mock_when_env_set(monkeypatch: pytest.MonkeyPatch) -> None:
-    """EMBEDDING_BACKEND=mock → MockProvider。"""
+    """EMBEDDING_BACKEND=mock → MockProvider。
+
+    注：get_settings 为 lru_cache 单例，测试进程内 env 变更不可见，
+    因此用 stub settings 直接驱动工厂决策逻辑。
+    """
     reset_provider()
-    monkeypatch.setenv("EMBEDDING_BACKEND", "mock")
-    p = get_embedding_provider()
+    monkeypatch.delenv("EMBEDDING_BACKEND", raising=False)
+    stub = SimpleNamespace(embedding_backend="mock", debug=False, embedding_dim=1024)
+    with patch.object(embedding, "get_settings", return_value=stub):
+        p = get_embedding_provider()
     assert isinstance(p, MockProvider)
     reset_provider()
 
@@ -121,6 +128,7 @@ def test_factory_mock_when_debug(monkeypatch: pytest.MonkeyPatch) -> None:
     _clear_env(monkeypatch, "EMBEDDING_BACKEND")
     # patch settings.debug 返回 True
     with patch.object(embedding, "get_settings") as mock_settings:
+        mock_settings.return_value.embedding_backend = ""  # 未设置
         mock_settings.return_value.debug = True
         mock_settings.return_value.embedding_dim = 1024
         p = get_embedding_provider()
@@ -133,6 +141,7 @@ def test_factory_local_when_not_debug(monkeypatch: pytest.MonkeyPatch) -> None:
     reset_provider()
     _clear_env(monkeypatch, "EMBEDDING_BACKEND")
     with patch.object(embedding, "get_settings") as mock_settings:
+        mock_settings.return_value.embedding_backend = ""  # 未设置
         mock_settings.return_value.debug = False
         mock_settings.return_value.embedding_dim = 1024
         p = get_embedding_provider()
@@ -143,8 +152,14 @@ def test_factory_local_when_not_debug(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_factory_unknown_backend_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     """未知后端 → AgentError。"""
     reset_provider()
-    monkeypatch.setenv("EMBEDDING_BACKEND", "unknown_provider")
-    with pytest.raises(AgentError):
+    monkeypatch.delenv("EMBEDDING_BACKEND", raising=False)
+    stub = SimpleNamespace(
+        embedding_backend="unknown_provider", debug=False, embedding_dim=1024
+    )
+    with (
+        patch.object(embedding, "get_settings", return_value=stub),
+        pytest.raises(AgentError),
+    ):
         get_embedding_provider()
     reset_provider()
 
@@ -226,10 +241,48 @@ def test_all_providers_implement_interface() -> None:
 
 
 # ============== MockProvider 与 DashScope 接口一致性 ==============
-def test_dashscope_provider_uses_api_url() -> None:
-    """DashScopeProvider 的 API URL 已定义。"""
-    assert DashScopeProvider.API_URL.startswith("https://")
-    assert "dashscope" in DashScopeProvider.API_URL or "aliyuncs" in DashScopeProvider.API_URL
+@pytest.mark.asyncio
+async def test_dashscope_provider_uses_api_url() -> None:
+    """DashScopeProvider POST 到 {qwen_base_url}/embeddings（OpenAI 兼容模式）。"""
+    captured: dict[str, str] = {}
+
+    class _FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, Any]:
+            return {"data": [{"embedding": [0.0, 0.1, 0.2]}]}
+
+    class _FakeAsyncClient:
+        def __init__(self, *_args: Any, **_kw: Any) -> None:
+            return None
+
+        async def __aenter__(self) -> _FakeAsyncClient:
+            return self
+
+        async def __aexit__(self, *_args: Any) -> None:
+            return None
+
+        async def post(self, url: str, **_kw: Any) -> _FakeResponse:
+            captured["url"] = url
+            return _FakeResponse()
+
+    stub = SimpleNamespace(
+        qwen_api_key="test-key",
+        qwen_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+        embedding_dim=1024,
+    )
+    with (
+        patch.object(embedding, "get_settings", return_value=stub),
+        patch.object(embedding.httpx, "AsyncClient", _FakeAsyncClient),
+    ):
+        provider = DashScopeProvider()
+        vecs = await provider.batch_embed(["你好"])
+
+    assert captured["url"].startswith("https://dashscope.aliyuncs.com")
+    assert captured["url"].endswith("/embeddings")
+    assert len(vecs) == 1
+    assert vecs[0] == [0.0, 0.1, 0.2]
 
 
 # ============== 清理 ==============

@@ -81,8 +81,13 @@ def _make_app() -> FastAPI:
 
 
 @pytest.fixture
-async def client():
-    app = _make_app()
+def app() -> FastAPI:
+    """每个测试独立 app（fake_db 通过 dependency_overrides 注入 fake session）。"""
+    return _make_app()
+
+
+@pytest.fixture
+async def client(app: FastAPI):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
         yield c
 
@@ -184,9 +189,13 @@ async def test_me_without_token_returns_401(client) -> None:
 
 
 @pytest.fixture
-def fake_db(monkeypatch) -> MagicMock:
-    """monkeypatch auth 模块的 get_db，返回 fake AsyncSession（不连真库）。"""
-    from app.api.v1 import auth as auth_mod
+def fake_db(app: FastAPI) -> MagicMock:
+    """用 app.dependency_overrides 覆盖 get_db，返回 fake AsyncSession（不连真库）。
+
+    注意：Depends(get_db) 在路由声明时已绑定 app.api.deps.get_db 原函数对象，
+    monkeypatch 模块属性对依赖解析无效，必须走 dependency_overrides。
+    """
+    from app.api.deps import get_db
 
     session = MagicMock()
     session.scalar = AsyncMock(return_value=None)
@@ -201,7 +210,7 @@ def fake_db(monkeypatch) -> MagicMock:
     async def _get_db():
         yield session
 
-    monkeypatch.setattr(auth_mod, "get_db", _get_db)
+    app.dependency_overrides[get_db] = _get_db
     return session
 
 
