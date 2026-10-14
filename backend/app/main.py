@@ -9,10 +9,11 @@ from fastapi.responses import JSONResponse
 from app.api.v1 import api_router
 from app.api.v1 import health as health_router
 from app.core.config import get_settings
-from app.core.errors import AppError, error_response
+from app.core.errors import AppError, RateLimitedError, error_response
 from app.core.logging import bind_trace_id, get_logger, setup_logging
 from app.core.redis import close_redis
 from app.db.session import dispose_engine
+from app.services.rate_limit import check_and_incr
 
 
 @asynccontextmanager
@@ -59,6 +60,25 @@ def create_app() -> FastAPI:
         response = await call_next(request)
         response.headers["X-Trace-Id"] = trace_id
         return response
+
+    # API 边缘限流（per-IP 兜底，Redis 固定窗口，超限 429）
+    @app.middleware("http")
+    async def rate_limit_middleware(request: Request, call_next):
+        if settings.rate_limit_enabled:
+            path = request.url.path.strip("/")
+            if path not in settings.rate_limit_exempt_path_set:
+                fwd = request.headers.get("x-forwarded-for", "")
+                client_ip = fwd.split(",")[0].strip() if fwd else (
+                    request.client.host if request.client else "unknown"
+                )
+                try:
+                    await check_and_incr(
+                        "api:ip", client_ip,
+                        settings.rate_limit_per_ip_per_min, 60,
+                    )
+                except RateLimitedError as exc:
+                    return JSONResponse(status_code=429, content=error_response(exc))
+        return await call_next(request)
 
     # 路由
     app.include_router(api_router)

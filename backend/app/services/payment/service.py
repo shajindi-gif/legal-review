@@ -17,12 +17,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.constants import (
     CHANNEL_SCENES,
+    FREE_TRIAL_LIMIT,
     PLAN_PRICING_CENTS,
     PLAN_QUOTA_DAILY,
-    PayScene,
     PaymentChannel,
     PaymentStatus,
-    PlanTier,
+    PayScene,
 )
 from app.core.errors import AppError, ValidationError
 from app.core.logging import get_logger
@@ -30,6 +30,8 @@ from app.models.user import Order, Payment, UserPlan
 from app.services.payment.providers import AlipayProvider, CallbackResult, WechatPayProvider
 
 logger = get_logger("payment.service")
+
+PENDING_TIMEOUT_MINUTES = 120  # pending 订单超 2h 未支付自动关闭（SOP 铁律）
 
 
 class PaymentService:
@@ -57,8 +59,6 @@ class PaymentService:
                 raise AppError("支付宝未启用", code="alipay_disabled")
             self._ali = AlipayProvider()
         return self._ali
-
-    PENDING_TIMEOUT_MINUTES = 120  # pending 订单超 2h 未支付自动关闭（SOP 铁律）
 
     # ---- 建单 ----
     async def create_order(
@@ -308,28 +308,31 @@ class PaymentService:
     async def _activate_plan(self, user_id: UUID, plan_tier: str, period_days: int) -> None:
         """开通/续费套餐。
 
-        规则：
-        - 如果已有同 tier 的 active plan → 延长 expires_at
-        - 否则创建新 plan
+        user_plans.user_id 唯一：每个用户只有一条 plan 记录。
+        免费 → 付费 升级在现有记录上就地改为目标 tier 并顺延 expires_at。
         """
         plan = await self._session.scalar(
-            select(UserPlan).where(
-                UserPlan.user_id == user_id,
-                UserPlan.tier == plan_tier,
-                UserPlan.status == "active",
-            )
+            select(UserPlan).where(UserPlan.user_id == user_id)
         )
         now = datetime.now(UTC)
-        quota_daily = PLAN_QUOTA_DAILY.get(plan_tier, 3)
+        quota_daily = PLAN_QUOTA_DAILY.get(plan_tier, -1)
 
         if plan is not None:
-            # 续费：从当前 expires_at 或 now 开始延长
+            # 续费/升级：从当前 expires_at 或 now 开始延长
             base = plan.expires_at if plan.expires_at and plan.expires_at > now else now
-            plan.expires_at = base + timedelta(days=period_days)
+            plan.tier = plan_tier
+            plan.status = "active"
             plan.quota_daily = quota_daily
             plan.period_days = period_days
             plan.started_at = now
-            logger.info("plan_renewed", user_id=str(user_id), tier=plan_tier, expires_at=plan.expires_at.isoformat())
+            plan.expires_at = base + timedelta(days=period_days)
+            # 付费后按 tier 判定不限次数，免费试用计数不再参与配额判断
+            logger.info(
+                "plan_renewed",
+                user_id=str(user_id),
+                tier=plan_tier,
+                expires_at=plan.expires_at.isoformat(),
+            )
         else:
             plan = UserPlan(
                 id=uuid.uuid4(),
@@ -341,10 +344,17 @@ class PaymentService:
                 started_at=now,
                 expires_at=now + timedelta(days=period_days),
                 used_today=0,
+                free_trial_used=0,
+                free_trial_limit=FREE_TRIAL_LIMIT,
                 quota_reset_date=now.strftime("%Y-%m-%d"),
             )
             self._session.add(plan)
-            logger.info("plan_activated", user_id=str(user_id), tier=plan_tier, expires_at=plan.expires_at.isoformat())
+            logger.info(
+                "plan_activated",
+                user_id=str(user_id),
+                tier=plan_tier,
+                expires_at=plan.expires_at.isoformat(),
+            )
 
     # ---- 查询 ----
     async def get_order(self, order_id: UUID) -> Order | None:

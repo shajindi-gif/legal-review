@@ -1,0 +1,35 @@
+# 基础告警规则（阈值告警，等待 Alertmanager 接入后即可推送通知）
+groups:
+  - name: legal-review
+    rules:
+      - alert: LegalReviewBackendDown
+        expr: up{job="legal-backend"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "后端 /metrics 抓取失败"
+
+      - alert: LegalReviewNodePassRateLow
+        expr: legal_review_node_fail_count > 0 and legal_review_node_pass_rate < 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "节点通过率低于 80%：{{ $labels.node }}"
+
+      - alert: LegalReviewHallucinationRateHigh
+        expr: legal_review_hallucination_rate_avg > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "幻觉率均值超过 5%"
+
+      - alert: LegalReviewTaskDurationHigh
+        expr: legal_review_task_duration_ms_p99 > 600000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "任务 P99 时长超过 10 分钟"

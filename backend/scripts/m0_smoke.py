@@ -3,17 +3,17 @@ then walk /register/phone -> /me -> /login -> /quota -> /refresh.
 Also verify Demo user still works.
 """
 import asyncio
-import sys
 import json
-import urllib.request
+import sys
 import urllib.error
-from datetime import datetime, UTC, timedelta
+import urllib.request
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 sys.path.insert(0, "/app")
 
-from sqlalchemy import select, delete
 import bcrypt
+from sqlalchemy import delete, select
 
 from app.db.session import get_session_factory
 from app.models.identity import VerificationCode
@@ -108,7 +108,8 @@ async def main():
     assert me.get("id") == user_id
     assert me.get("role") == "submitter"
     assert me.get("plan_tier") == "free"
-    assert me.get("quota_daily") == 3
+    assert me.get("quota_daily") == 2
+    assert me.get("remaining") == 2
 
     print("\n=== 3. POST /api/v1/auth/login/phone (new user) ===")
     status, login_body = http("POST", "/api/v1/auth/login/phone", {

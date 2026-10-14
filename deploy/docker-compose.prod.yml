@@ -96,6 +96,25 @@ services:
       # Agent 硬约束
       MAX_ITERATION: ${MAX_ITERATION:-5}
       MIN_CONFIDENCE: ${MIN_CONFIDENCE:-0.7}
+      # 支付（微信 + 支付宝；密钥只存 deploy/.env，不进仓库）
+      WXPAY_ENABLED: ${WXPAY_ENABLED:-false}
+      WXPAY_MCHID: ${WXPAY_MCHID:-}
+      WXPAY_APPID: ${WXPAY_APPID:-}
+      WXPAY_APPSECRET: ${WXPAY_APPSECRET:-}
+      WXPAY_API_V3_KEY: ${WXPAY_API_V3_KEY:-}
+      WXPAY_MCH_SERIAL_NO: ${WXPAY_MCH_SERIAL_NO:-}
+      WXPAY_MCH_PRIVATE_KEY: ${WXPAY_MCH_PRIVATE_KEY:-}
+      WXPAY_PUBLIC_KEY: ${WXPAY_PUBLIC_KEY:-}
+      WXPAY_PUBLIC_KEY_ID: ${WXPAY_PUBLIC_KEY_ID:-}
+      WXPAY_NOTIFY_PATH: ${WXPAY_NOTIFY_PATH:-/api/v1/billing/wechat/notify}
+      WXPAY_OAUTH_REDIRECT_URL: ${WXPAY_OAUTH_REDIRECT_URL:-}
+      ALIPAY_ENABLED: ${ALIPAY_ENABLED:-false}
+      ALIPAY_APP_ID: ${ALIPAY_APP_ID:-}
+      ALIPAY_PRIVATE_KEY: ${ALIPAY_PRIVATE_KEY:-}
+      ALIPAY_PUBLIC_KEY: ${ALIPAY_PUBLIC_KEY:-}
+      ALIPAY_GATEWAY: ${ALIPAY_GATEWAY:-https://openapi.alipay.com/gateway.do}
+      ALIPAY_NOTIFY_PATH: ${ALIPAY_NOTIFY_PATH:-/api/v1/billing/alipay/notify}
+      ALIPAY_RETURN_URL: ${ALIPAY_RETURN_URL:-}
     volumes:
       - legal_backend_sandbox:/app/_sandbox
       - legal_backend_uploads:/app/uploads
@@ -162,6 +181,23 @@ services:
     networks: [appnet]
 
   # ============================================================
+  # prometheus 指标抓取 + 基础告警（内网，不对外暴露端口）
+  # ============================================================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: legal-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - legal_prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+    networks: [appnet]
+
+  # ============================================================
   # certbot 自动续期（独立 profile，避免与 nginx 资源抢占）
   # 启动：docker compose --profile certbot up -d
   # ============================================================
@@ -188,6 +224,8 @@ volumes:
     name: legal_certbot_conf
   legal_certbot_www:
     name: legal_certbot_www
+  legal_prometheus_data:
+    name: legal_prometheus_data
 
 networks:
   appnet:

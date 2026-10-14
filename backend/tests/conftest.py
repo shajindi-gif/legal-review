@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+import os
+
+# 测试环境禁用 API 边缘限流：TestClient 全量请求共用同一 client key，
+# 累积可能超阈值导致误触发 429，污染测试结果。
+os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
+
 import asyncio
 import shutil
 from pathlib import Path

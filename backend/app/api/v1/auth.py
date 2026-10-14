@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
 from app.core.config import get_settings
-from app.core.constants import PlanTier
+from app.core.constants import FREE_TRIAL_LIMIT, PlanTier
 from app.core.errors import AppError
 from app.schemas.auth import (
     EmailSendRequest,
@@ -76,8 +76,9 @@ def _principal_to_out(p: CorePrincipal) -> dict:
         "company": p.company,
         "role": str(p.role),
         "plan_tier": "free",
-        "quota_daily": 3,
+        "quota_daily": FREE_TRIAL_LIMIT,
         "used_today": 0,
+        "remaining": FREE_TRIAL_LIMIT,
         "last_login_at": p.last_login_at,
         "tenant_id": p.tenant_id,
     }
@@ -136,12 +137,21 @@ def _client_ua(request: Request) -> str | None:
 def _local_user_out(user) -> dict:
     """本地 User ORM → UserOut 兼容 dict。"""
     tier = PlanTier.FREE
-    quota_daily = 3
+    quota_daily = FREE_TRIAL_LIMIT
     used_today = 0
+    remaining = FREE_TRIAL_LIMIT
     if user.plan is not None:
         tier = user.plan.tier
-        quota_daily = user.plan.quota_daily
-        used_today = user.plan.used_today
+        if str(tier) in (PlanTier.PRO.value, PlanTier.ENTERPRISE.value):
+            quota_daily = -1
+            remaining = -1
+            used_today = 0
+        else:
+            limit = user.plan.free_trial_limit or FREE_TRIAL_LIMIT
+            used = user.plan.free_trial_used or 0
+            quota_daily = limit
+            used_today = used
+            remaining = max(0, limit - used)
     return {
         "id": user.id,
         "email": user.email,
@@ -152,6 +162,7 @@ def _local_user_out(user) -> dict:
         "plan_tier": str(tier),
         "quota_daily": quota_daily,
         "used_today": used_today,
+        "remaining": remaining,
         "last_login_at": user.last_login_at,
         "tenant_id": None,
     }

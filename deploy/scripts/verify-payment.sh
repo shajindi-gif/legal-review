@@ -134,13 +134,13 @@ fi
 if [[ "$PAY_TYPE_R" == "$PAY_TYPE" ]]; then
     step_pass "pay_type 回写 = $PAY_TYPE_R"
 else
-    step_fail "pay_type 回写 ≠ 请求值（$PAY_TYPE_R vs $PAY_TYPE）"
+    step_fail "pay_type 回写 ≠ 请求值（$PAY_TYPE_R vs ${PAY_TYPE}）"
 fi
 
 # 凭据自检
 case "$PAY_TYPE" in
     native) [[ -n "$QR" ]] && step_pass "qr_code 非空（Native）" || step_fail "qr_code 为空" ;;
-    page|wap|h5) [[ -n "$PAY_URL" ]] && step_pass "pay_url 非空（$PAY_TYPE）" || step_fail "pay_url 为空" ;;
+    page|wap|h5) [[ -n "$PAY_URL" ]] && step_pass "pay_url 非空（${PAY_TYPE}）" || step_fail "pay_url 为空" ;;
     jsapi) step_warn "JSAPI 需要 jsapi_params；本次未填 openid，应返回 400" ;;
 esac
 

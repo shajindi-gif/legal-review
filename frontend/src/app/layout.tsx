@@ -13,6 +13,10 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+// 强制全站动态渲染（SSR）：CSP nonce 方案要求每次请求随机 nonce，
+// 静态预渲染的页面无法携带 per-request nonce，会与 script-src 的 nonce 白名单冲突。
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "智审 · 行政规范性文件智能合法性审查",
   description:

@@ -34,6 +34,8 @@ DEPLOY_DIR="$PROJECT_DIR/deploy"
 ENV_FILE="$DEPLOY_DIR/.env"
 # ALIPAY_ONLY=1：跳过 WXPAY_* 全部必填校验（只验 ALIPAY_* 三项）
 ALIPAY_ONLY=${ALIPAY_ONLY:-0}
+# REMOTE_SUDO=sudo：远端 docker / 文件写入用 sudo（非 root 登录时用；免密 sudo）
+REMOTE_SUDO=${REMOTE_SUDO:-}
 
 RED='\033[1;31m'; GRN='\033[1;32m'; YEL='\033[1;33m'; CYN='\033[1;36m'; NC='\033[0m'
 log()  { printf '\n${CYN}== %s ==${NC}\n' "$*"; }
@@ -98,7 +100,7 @@ log "[1/4] 备份旧 .env"
 
 ssh "$SSH_HOST" "set -e
     if [[ -f '$ENV_FILE' ]]; then
-        cp '$ENV_FILE' '$ENV_FILE.bak-\$(date -u +%Y%m%d-%H%M%S)'
+        $REMOTE_SUDO cp '$ENV_FILE' '$ENV_FILE.bak-\$(date -u +%Y%m%d-%H%M%S)'
         echo '备份完成'
     else
         echo '$ENV_FILE 不存在，将新建'
@@ -119,15 +121,17 @@ to_env_value() {
     printf '"%s"' "$s"
 }
 
+# ALIPAY_ONLY=1 时 WXPAY_* 未定义也安全（默认 false/空），微信后续配置好再补
+WXPAY_ENABLED="${WXPAY_ENABLED:-false}"
 WXPAY_ENABLED_E=$(to_env_value "$WXPAY_ENABLED")
-WXPAY_MCHID_E=$(to_env_value "$WXPAY_MCHID")
-WXPAY_APPID_E=$(to_env_value "$WXPAY_APPID")
-WXPAY_APPSECRET_E=$(to_env_value "$WXPAY_APPSECRET")
-WXPAY_API_V3_KEY_E=$(to_env_value "$WXPAY_API_V3_KEY")
-WXPAY_MCH_SERIAL_NO_E=$(to_env_value "$WXPAY_MCH_SERIAL_NO")
-WXPAY_MCH_PRIVATE_KEY_E=$(to_env_value "$WXPAY_MCH_PRIVATE_KEY")
-WXPAY_PUBLIC_KEY_E=$(to_env_value "$WXPAY_PUBLIC_KEY")
-WXPAY_PUBLIC_KEY_ID_E=$(to_env_value "$WXPAY_PUBLIC_KEY_ID")
+WXPAY_MCHID_E=$(to_env_value "${WXPAY_MCHID:-}")
+WXPAY_APPID_E=$(to_env_value "${WXPAY_APPID:-}")
+WXPAY_APPSECRET_E=$(to_env_value "${WXPAY_APPSECRET:-}")
+WXPAY_API_V3_KEY_E=$(to_env_value "${WXPAY_API_V3_KEY:-}")
+WXPAY_MCH_SERIAL_NO_E=$(to_env_value "${WXPAY_MCH_SERIAL_NO:-}")
+WXPAY_MCH_PRIVATE_KEY_E=$(to_env_value "${WXPAY_MCH_PRIVATE_KEY:-}")
+WXPAY_PUBLIC_KEY_E=$(to_env_value "${WXPAY_PUBLIC_KEY:-}")
+WXPAY_PUBLIC_KEY_ID_E=$(to_env_value "${WXPAY_PUBLIC_KEY_ID:-}")
 
 ALIPAY_ENABLED_E=$(to_env_value "$ALIPAY_ENABLED")
 ALIPAY_APP_ID_E=$(to_env_value "$ALIPAY_APP_ID")
@@ -199,9 +203,7 @@ PYEOF
 
 ENV_FILE_B64=$(printf '%s' "$ENV_FILE" | base64)
 ssh "$SSH_HOST" "set -e
-    export ENV_FILE='$ENV_FILE'
-    export PAYMENT_B64='$PAYMENT_BLOCK_ESC'
-    python3 - <<'PYEOF_REMOTE'
+    $REMOTE_SUDO ENV_FILE='$ENV_FILE' PAYMENT_B64='$PAYMENT_BLOCK_ESC' python3 - <<'PYEOF_REMOTE'
 $MERGE_SCRIPT
 PYEOF_REMOTE"
 ok "已写入（仅替换 WXPAY_*/ALIPAY_* 字段，其他字段原样保留）"
@@ -212,13 +214,13 @@ ok "已写入（仅替换 WXPAY_*/ALIPAY_* 字段，其他字段原样保留）"
 log "[3/4] 重启 backend"
 
 ssh "$SSH_HOST" "set -e; cd '$DEPLOY_DIR' && \
-    docker compose -f docker-compose.prod.yml up -d --no-deps backend"
+    $REMOTE_SUDO docker compose -f docker-compose.prod.yml up -d --no-deps backend"
 ok "backend 已重启"
 
 log "[verify] 等 backend /health（最多 60s）"
 HEALTHY=0
 for i in $(seq 1 20); do
-    if ssh "$SSH_HOST" "docker exec legal-backend python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=3).status==200 else 1)\"" >/dev/null 2>&1; then
+    if ssh "$SSH_HOST" "$REMOTE_SUDO docker exec legal-backend python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=3).status==200 else 1)\"" >/dev/null 2>&1; then
         HEALTHY=1; break
     fi
     sleep 3

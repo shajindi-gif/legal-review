@@ -93,7 +93,7 @@ async def create_order(
     """创建订单并返回支付凭据（扫码二维码 / 跳转 URL / JSAPI 参数）。"""
     svc = PaymentService(session)
     client_ip = req.client_ip or (request.client.host if request.client else "")
-    return await svc.create_order(
+    result = await svc.create_order(
         user_id=current_user.id,
         plan_tier=req.plan_tier,
         period_days=req.period_days,
@@ -102,6 +102,8 @@ async def create_order(
         openid=req.openid,
         client_ip=client_ip,
     )
+    await session.commit()
+    return result
 
 
 @router.get("/orders/{order_id}", response_model=OrderStatusResponse, summary="查询订单状态")
@@ -153,7 +155,9 @@ async def wechat_notify(request: Request, session: AsyncSession = Depends(get_db
     svc = PaymentService(session)
     ret = await svc.handle_callback(PaymentChannel.WECHAT, result, {"raw": body_str})
     if ret["status"] == "fail":
+        await session.rollback()
         return {"code": "FAIL", "message": ret["message"]}
+    await session.commit()
     return {"code": "SUCCESS", "message": "OK"}
 
 

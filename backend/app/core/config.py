@@ -176,6 +176,11 @@ class Settings(BaseSettings):
     alipay_notify_path: str = "/api/v1/billing/alipay/notify"
     alipay_return_url: str = ""            # 支付完成同步回跳地址（page/wap 的 return_url）
 
+    # ---- API 边缘限流（per-IP 兜底，Redis 固定窗口，超限 429）----
+    rate_limit_enabled: bool = True
+    rate_limit_per_ip_per_min: int = 300  # 每 IP 每分钟最大请求数
+    rate_limit_exempt_paths: str = "/health,/docs,/redoc,/api/v1/openapi.json"
+
     # ---- CORS ----
     # 逗号分隔字符串(pydantic-settings 对 list 类型要求 JSON 数组,
     # 改用 str 存储 + property 返回 list,兼容 .env 逗号格式)
@@ -193,6 +198,11 @@ class Settings(BaseSettings):
         if not self.cors_origins:
             return self._default_cors_origins
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def rate_limit_exempt_path_set(self) -> set[str]:
+        """解析限流豁免路径为去前导斜杠的 set（用于逐请求前缀/全量判断）。"""
+        return {p.strip().strip("/") for p in self.rate_limit_exempt_paths.split(",") if p.strip()}
 
     @property
     def sandbox_path(self) -> Path:

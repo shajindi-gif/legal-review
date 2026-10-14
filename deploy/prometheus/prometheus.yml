@@ -1,0 +1,13 @@
+# Prometheus 配置 — 抓取后端 /api/v1/metrics/prometheus（内网 backend:8000）
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+scrape_configs:
+  - job_name: legal-backend
+    metrics_path: /api/v1/metrics/prometheus
+    static_configs:
+      - targets: ["backend:8000"]

@@ -19,18 +19,8 @@ from uuid import UUID, uuid4
 
 import bcrypt
 import jwt
-from sqlalchemy import select, update
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.core.config import get_settings
-from app.core.constants import OrganizationType, PlanTier, UserRole, UserStatus
-from app.core.errors import AuthError, ConflictError, NotFoundError, ValidationError
-from app.models.identity import RefreshToken
-from app.models.user import Organization, User, UserPlan
 
 # ============== 密码哈希 (Argon2id + bcrypt 双算法兼容) ==============
-
 # bcrypt 历史哈希 (老用户, 由 0003 之前的数据)
 # argon2id 哈希 (M0 之后的新用户, 优先)
 #
@@ -39,9 +29,16 @@ from app.models.user import Organization, User, UserPlan
 #   $2b$ / $2a$    → bcrypt
 #
 # opportunistic rehash: 登录成功时若命中 bcrypt, 后台异步重哈希为 Argon2id
-
-import bcrypt
 import structlog
+from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config import get_settings
+from app.core.constants import FREE_TRIAL_LIMIT, OrganizationType, PlanTier, UserRole, UserStatus
+from app.core.errors import AuthError, ConflictError, NotFoundError, ValidationError
+from app.models.identity import RefreshToken
+from app.models.user import Organization, User, UserPlan
 
 try:
     from argon2 import PasswordHasher as _Argon2PasswordHasher
@@ -112,7 +109,7 @@ def needs_rehash(hashed: str) -> bool:
     return True
 
 
-def opportunistic_rehash(user: "User", plain: str) -> str | None:
+def opportunistic_rehash(user: User, plain: str) -> str | None:
     """登录成功后调用: 旧 bcrypt 用户自动升级到 Argon2id。
 
     返回新 hash 字符串 (调用方负责写回 DB), 不需要升级则返回 None。
@@ -256,9 +253,10 @@ class AuthService:
             user_id=user.id,
             tier=PlanTier.FREE,
             status="active",
-            quota_daily=3,
+            quota_daily=FREE_TRIAL_LIMIT,
             used_today=0,
-            quota_reset_date=datetime.now(UTC).strftime("%Y-%m-%d"),
+            free_trial_used=0,
+            free_trial_limit=FREE_TRIAL_LIMIT,
         )
         self._session.add(plan)
         await self._session.flush()
@@ -343,8 +341,10 @@ class AuthService:
                 user_id=user_id,
                 tier=PlanTier.FREE,
                 status="active",
-                quota_daily=3,
+                quota_daily=FREE_TRIAL_LIMIT,
                 used_today=0,
+                free_trial_used=0,
+                free_trial_limit=FREE_TRIAL_LIMIT,
             )
             self._session.add(plan)
             await self._session.flush()
@@ -460,9 +460,10 @@ class AuthService:
             user_id=user.id,
             tier=PlanTier.FREE,
             status="active",
-            quota_daily=3,
+            quota_daily=FREE_TRIAL_LIMIT,
             used_today=0,
-            quota_reset_date=datetime.now(UTC).strftime("%Y-%m-%d"),
+            free_trial_used=0,
+            free_trial_limit=FREE_TRIAL_LIMIT,
         )
         self._session.add(plan)
         await self._session.flush()

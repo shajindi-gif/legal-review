@@ -22,7 +22,7 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 
 from app.core.config import get_settings
-from app.core.constants import PlanTier, UserRole, UserStatus
+from app.core.constants import FREE_TRIAL_LIMIT, PlanTier, UserRole, UserStatus
 from app.core.errors import AuthError, ConflictError, NotFoundError
 from app.services.auth_service import (
     AuthService,
@@ -30,11 +30,9 @@ from app.services.auth_service import (
     create_refresh_token,
     decode_token,
     hash_password,
-    is_legacy_bcrypt,
-    needs_rehash,
-    opportunistic_rehash,
     verify_password,
 )
+
 try:
     from app.services.auth_service import _HAS_ARGON2  # noqa: F401
 except ImportError:  # pragma: no cover
@@ -164,7 +162,8 @@ async def test_register_creates_user_and_free_plan() -> None:
     plan_added = [o for o in added_objs if o.__class__.__name__ == "UserPlan"]
     assert len(plan_added) == 1
     assert plan_added[0].tier == PlanTier.FREE
-    assert plan_added[0].quota_daily == 3
+    assert plan_added[0].free_trial_limit == FREE_TRIAL_LIMIT
+    assert plan_added[0].free_trial_used == 0
 
 
 @pytest.mark.asyncio

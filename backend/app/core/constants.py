@@ -25,7 +25,7 @@ class UserStatus(StrEnum):
 
 # ============== SaaS 订阅 ==============
 class PlanTier(StrEnum):
-    FREE = "free"                # 免费版：每天 3 次审查
+    FREE = "free"                # 免费版：累计 2 次体验（用尽后需升级）
     PRO = "pro"                  # 专业版：299/月，无限审查
     ENTERPRISE = "enterprise"    # 企业版：1999/月，团队账号
 
@@ -90,9 +90,11 @@ PLAN_PRICING_CENTS: dict[str, dict[int, int]] = {
     },
 }
 
-# 各套餐开通后的每日审查配额（-1 = 不限）
+# 免费版累计体验次数（用尽后需升级套餐，不再每日重置）
+FREE_TRIAL_LIMIT = 2
+
+# 各套餐开通后的审查配额（-1 = 不限；Free 走 FREE_TRIAL_LIMIT 累计体验计数）
 PLAN_QUOTA_DAILY: dict[str, int] = {
-    PlanTier.FREE: 3,
     PlanTier.PRO: -1,
     PlanTier.ENTERPRISE: -1,
 }

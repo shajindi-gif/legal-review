@@ -104,7 +104,7 @@ class User(UUIDPkMixin, TimestampMixin, SoftDeleteMixin, Base):
 class UserPlan(UUIDPkMixin, TimestampMixin, Base):
     """用户订阅表 T13：记录用户当前套餐与配额。
 
-    - Free：每天 3 次审查（quota_daily=3）
+    - Free：累计 2 次免费体验（free_trial_used / free_trial_limit），用尽后需升级
     - Pro：无限审查（quota_daily=-1，不限）
     - Enterprise：团队账号（quota_daily=-1）
     """
@@ -126,6 +126,9 @@ class UserPlan(UUIDPkMixin, TimestampMixin, Base):
     # 当日已用次数（按 UTC 日期重置；DB 兜底版本由 QuotaService 维护）
     used_today: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     quota_reset_date: Mapped[str | None] = mapped_column(String(10), nullable=True)  # YYYY-MM-DD
+    # 免费体验累计计数（仅 Free 使用；用尽后需升级套餐）
+    free_trial_used: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    free_trial_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=2)
     # 订阅周期（天）
     period_days: Mapped[int] = mapped_column(Integer, nullable=False, default=30)
     started_at: Mapped[datetime | None] = mapped_column(nullable=True)

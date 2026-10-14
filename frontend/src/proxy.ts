@@ -2,8 +2,12 @@ import { NextResponse, type NextRequest } from "next/server";
 
 /**
  * 路由层守卫（Next.js 16：middleware 已重命名为 proxy）。
- * 无 auth cookie（lr_token）时将受保护路由重定向到 /login。
- * token 在客户端登录时由 lib/auth.ts 同步写入 cookie，供此处的服务端读取。
+ * 1. 无 auth cookie（lr_token）时将受保护路由重定向到 /login。
+ * 2. 为每个页面响应注入 Content-Security-Policy，并在请求头携带同一 nonce：
+ *    Next.js 16 会从请求头 content-security-policy 中解析出 nonce 并注入到
+ *    它自己渲染的 <script> 标签（见 node_modules/next/dist/server/app-render/
+ *    get-script-nonce-from-header.js）。这样可对 inline script 启用 nonce 白名单，
+ *    而不必放行 'unsafe-inline'，兼顾安全与 Next.js 客户端脚本。
  */
 const PROTECTED = [
   "/dashboard",
@@ -14,13 +18,40 @@ const PROTECTED = [
   "/notifications",
 ];
 
+function buildCspHeader(nonce: string): string {
+  return [
+    "default-src 'self'",
+    `script-src 'self' 'nonce-${nonce}'`,
+    // React/Radix 有内联 style 属性与内联 <style>，无法逐条 nonce，保留 unsafe-inline
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob:",
+    "font-src 'self' data:",
+    // 生产 API/SSE 走同源；ws/wss 仅本地 dev 热更新需要
+    "connect-src 'self' ws: wss:",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'self'",
+  ].join("; ");
+}
+
 export function proxy(request: NextRequest) {
+  // 每次请求随机 nonce；base64 编码保证符合 CSP nonce-source 语法
+  const nonce = btoa(crypto.randomUUID());
+  const csp = buildCspHeader(nonce);
+
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("content-security-policy", csp);
+
   const { pathname } = request.nextUrl;
   const isProtected = PROTECTED.some(
     (p) => pathname === p || pathname.startsWith(p + "/"),
   );
+
   if (!isProtected) {
-    return NextResponse.next();
+    const res = NextResponse.next({ request: { headers: requestHeaders } });
+    res.headers.set("Content-Security-Policy", csp);
+    return res;
   }
 
   const token = request.cookies.get("lr_token")?.value;
@@ -30,28 +61,14 @@ export function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  return NextResponse.next();
+  const res = NextResponse.next({ request: { headers: requestHeaders } });
+  res.headers.set("Content-Security-Policy", csp);
+  return res;
 }
 
 export const config = {
+  // 覆盖全部页面请求，排除 API、Next 静态资源与带扩展名的文件
   matcher: [
-    "/dashboard/:path*",
-    "/upload/:path*",
-    "/review/:path*",
-    "/report/:path*",
-    "/admin/:path*",
-    "/assistant/:path*",
-    "/tasks/:path*",
-    "/reports/:path*",
-    "/documents/:path*",
-    "/notifications/:path*",
-    "/dashboard",
-    "/upload",
-    "/admin",
-    "/assistant",
-    "/tasks",
-    "/reports",
-    "/documents",
-    "/notifications",
+    "/((?!api|_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|.*\\..*).*)",
   ],
 };

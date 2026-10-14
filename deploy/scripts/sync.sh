@@ -35,6 +35,8 @@ REBUILD_BACKEND=${REBUILD_BACKEND:-1}
 REBUILD_FRONTEND=${REBUILD_FRONTEND:-1}
 SKIP_PULL=${SKIP_PULL:-0}
 RESTART_NGINX=${RESTART_NGINX:-0}
+# REMOTE_SUDO=sudo：远端 docker / git 用 sudo（非 root 登录时用；免密 sudo）
+REMOTE_SUDO=${REMOTE_SUDO:-}
 
 RED='\033[1;31m'; GRN='\033[1;32m'; YEL='\033[1;33m'; CYN='\033[1;36m'; NC='\033[0m'
 log()  { printf '\n${CYN}== %s ==${NC}\n' "$*"; }
@@ -52,7 +54,7 @@ command -v rsync >/dev/null 2>&1 || warn "未检测到 rsync，将退化为 scp 
 
 # 探测 ssh 连通性（不执行命令，避免某些环境要求 TTY）
 if ! ssh -o BatchMode=yes -o ConnectTimeout=5 "$SSH_HOST" true 2>/dev/null; then
-    die "无法 SSH 到 $SSH_HOST（检查 ~/.ssh/config 或 key 权限）"
+    die "无法 SSH 到 ${SSH_HOST}（检查 ~/.ssh/config 或 key 权限）"
 fi
 ok "SSH 连通 $SSH_HOST"
 
@@ -69,8 +71,8 @@ log "[1/6] 服务器 git pull"
 
 if [[ "$SKIP_PULL" != "1" ]]; then
     ssh "$SSH_HOST" "set -e; cd '$PROJECT_DIR' && \
-        git fetch --all --prune && \
-        git reset --hard origin/\$(git symbolic-ref --short HEAD) && \
+        $REMOTE_SUDO git fetch --all --prune && \
+        $REMOTE_SUDO git reset --hard origin/\$(git symbolic-ref --short HEAD) && \
         git rev-parse --short HEAD" \
         | tee /tmp/legal-sync-head.log
     REMOTE_SHA=$(tail -1 /tmp/legal-sync-head.log)
@@ -89,9 +91,10 @@ BUILD_ARGS=()
 [[ "$REBUILD_FRONTEND" == "1" ]] && BUILD_ARGS+=(frontend)
 
 if [[ ${#BUILD_ARGS[@]} -gt 0 ]]; then
+    BUILD_LIST=$(printf '%s ' "${BUILD_ARGS[@]}")
     ssh "$SSH_HOST" "set -e; cd '$DEPLOY_DIR' && \
-        docker compose -f '$COMPOSE_FILE' build ${BUILD_ARGS[*]}"
-    ok "build 完毕: ${BUILD_ARGS[*]}"
+        $REMOTE_SUDO docker compose -f '$COMPOSE_FILE' build $BUILD_LIST"
+    ok "build 完毕: $BUILD_LIST"
 else
     warn "REBUILD_BACKEND=0 REBUILD_FRONTEND=0，跳过 build"
 fi
@@ -107,9 +110,10 @@ UP_ARGS=()
 [[ "$RESTART_NGINX" == "1" ]] && UP_ARGS+=(nginx)
 
 if [[ ${#UP_ARGS[@]} -gt 0 ]]; then
+    UP_LIST=$(printf '%s ' "${UP_ARGS[@]}")
     ssh "$SSH_HOST" "set -e; cd '$DEPLOY_DIR' && \
-        docker compose -f '$COMPOSE_FILE' up -d --no-deps ${UP_ARGS[*]}"
-    ok "重启完毕: ${UP_ARGS[*]}"
+        $REMOTE_SUDO docker compose -f '$COMPOSE_FILE' up -d --no-deps $UP_LIST"
+    ok "重启完毕: $UP_LIST"
 else
     warn "没有需要重启的服务"
 fi
@@ -121,7 +125,7 @@ log "[4/6] 等待 backend /health (最多 90s)"
 
 HEALTHY=0
 for i in $(seq 1 30); do
-    if ssh "$SSH_HOST" "docker exec legal-backend python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=3).status==200 else 1)\"" >/dev/null 2>&1; then
+    if ssh "$SSH_HOST" "$REMOTE_SUDO docker exec legal-backend python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=3).status==200 else 1)\"" >/dev/null 2>&1; then
         HEALTHY=1; break
     fi
     sleep 3
@@ -134,7 +138,7 @@ ok "backend /health 200"
 # ============================================================
 log "[5/6] alembic upgrade head"
 
-ssh "$SSH_HOST" "cd '$DEPLOY_DIR' && docker exec legal-backend alembic upgrade head"
+ssh "$SSH_HOST" "cd '$DEPLOY_DIR' && $REMOTE_SUDO docker exec legal-backend alembic upgrade head"
 ok "alembic 升级完成（无新迁移会立即返回）"
 
 # ============================================================

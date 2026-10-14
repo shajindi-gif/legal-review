@@ -46,7 +46,7 @@ class PromptSpec:
         version: str,
         template: str,
         variables: list[dict[str, Any]],
-        model_name: str,
+        model_name: str | None,
         temperature: float,
         status: str = PromptStatus.ACTIVE.value,
         min_eval_pass_rate: float = 0.9,
@@ -236,10 +236,7 @@ class PromptManager:
             version=version,
             template=template,
             variables=data.get("variables", []),
-            model_name=(
-                data.get("model_name")
-                or registry_entry.get("model_name", "deepseek-v4-flash")
-            ),
+            model_name=(data.get("model_name") or registry_entry.get("model_name")),
             temperature=data.get("temperature", registry_entry.get("temperature", 0.2)),
             status=PromptStatus.ACTIVE.value,
             min_eval_pass_rate=registry_entry.get("min_eval_pass_rate", 0.9),

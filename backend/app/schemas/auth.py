@@ -53,8 +53,9 @@ class UserOut(BaseModel):
     company: str | None = None
     role: str
     plan_tier: str = "free"
-    quota_daily: int = 3
+    quota_daily: int = 2
     used_today: int = 0
+    remaining: int = 2
     last_login_at: datetime | None = None
     tenant_id: UUID | None = None
 

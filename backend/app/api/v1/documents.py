@@ -61,7 +61,7 @@ async def upload_document(
     - X-Priority: low|normal|high|urgent（默认 normal）
 
     配额：
-    - Free 用户每日 3 次（超限返回 429 QuotaExceededError）
+    - Free 用户累计 2 次免费体验（用尽返回 429 QuotaExceededError）
     - Pro/Enterprise 不限次数
 
     硬约束：

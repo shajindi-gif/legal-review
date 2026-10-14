@@ -97,13 +97,24 @@ class LLMProvider:
             tier=tier,
         )
         try:
-            return json.loads(resp.text)
+            data = json.loads(resp.text)
         except json.JSONDecodeError as e:
             raise AgentError(
                 "llm",
                 f"LLM 输出非合法 JSON: {e}。原始输出前 200 字: {resp.text[:200]}",
                 trace_id=trace_id,
             ) from e
+        # 注入运行元数据（token / 时延 / 实际模型），供 AgentLog 成本可观测
+        if isinstance(data, dict):
+            data["_usage"] = {
+                "prompt_tokens": resp.usage.get("prompt_tokens", 0),
+                "completion_tokens": resp.usage.get("completion_tokens", 0),
+                "total_tokens": resp.usage.get("total_tokens", 0),
+                "latency_ms": resp.latency_ms,
+                "model": resp.model,
+                "provider": resp.provider,
+            }
+        return data
 
 
 # ============== 令牌桶限流 ==============

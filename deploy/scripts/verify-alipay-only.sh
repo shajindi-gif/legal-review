@@ -32,6 +32,8 @@ TOKEN=${TOKEN:-}
 USER_EMAIL=${USER_EMAIL:-}
 USER_PASS=${USER_PASS:-}
 ALIPAY_RETURN_URL=${ALIPAY_RETURN_URL:-https://$DOMAIN/pricing}
+# REMOTE_SUDO=sudo：远端读 .env / docker 用 sudo（非 root 登录时用）
+REMOTE_SUDO=${REMOTE_SUDO:-}
 
 RED='\033[1;31m'; GRN='\033[1;32m'; YEL='\033[1;33m'; CYN='\033[1;36m'; NC='\033[0m'
 log()  { printf '\n${CYN}== %s ==${NC}\n' "$*"; }
@@ -54,7 +56,7 @@ command -v jq >/dev/null 2>&1 || warn "未装 jq，JSON 解析会退化（仍可
 # 远端读 server 当前 ALIPAY_ENABLED / APP_ID（脱敏只看开关）
 REMOTE_FLAG=$(ssh "$SSH_HOST" "set -e; cd '$DEPLOY_DIR' && \
     if [[ -f .env ]]; then
-        awk -F= '/^ALIPAY_ENABLED=/{v=\$2; gsub(/\"/,\"\",v); print v; exit} /^ALIPAY_APP_ID=/{v=\$2; gsub(/\"/,\"\",v); print v; exit} END {print \"(none)\"}' .env | head -2
+        $REMOTE_SUDO awk -F= '/^ALIPAY_ENABLED=/{v=\$2; gsub(/\"/,\"\",v); print v; exit} /^ALIPAY_APP_ID=/{v=\$2; gsub(/\"/,\"\",v); print v; exit} END {print \"(none)\"}' .env | head -2
     else
         echo '(no .env)'
     fi")
@@ -67,7 +69,7 @@ API="https://$DOMAIN/api/v1"
 # ============================================================
 log "[1/7] 健康检查"
 
-HC=$(curl -sS -o /dev/null -w "%{http_code}" "$API/health" || echo 000)
+HC=$(curl -sS -o /dev/null -w "%{http_code}" "https://$DOMAIN/health" || echo 000)
 [[ "$HC" == "200" ]] && step_pass "/health -> 200" || step_fail "/health -> $HC"
 
 HC2=$(curl -sS -o /dev/null -w "%{http_code}" "$API/billing/pricing" || echo 000)
@@ -94,7 +96,7 @@ fi
 # ============================================================
 # 3. 创建支付宝订单（pay_type=page/wap）
 # ============================================================
-log "[3/7] 创建支付宝订单（pay_type=$PAY_TYPE）"
+log "[3/7] 创建支付宝订单（pay_type=${PAY_TYPE}）"
 
 ORDER_RESP=$(curl -sS -X POST "$API/billing/orders" \
     -H "Authorization: Bearer $TOKEN" \
@@ -117,7 +119,7 @@ else
     step_fail "下单失败：$ORDER_RESP"
 fi
 
-[[ "$PAY_TYPE_R" == "$PAY_TYPE" ]] && step_pass "pay_type 回写=$PAY_TYPE_R" || step_fail "pay_type 不一致（回写=$PAY_TYPE_R 请求=$PAY_TYPE）"
+[[ "$PAY_TYPE_R" == "$PAY_TYPE" ]] && step_pass "pay_type 回写=$PAY_TYPE_R" || step_fail "pay_type 不一致（回写=$PAY_TYPE_R 请求=${PAY_TYPE}）"
 
 if [[ -n "$PAY_URL" ]]; then
     step_pass "pay_url 非空（${#PAY_URL} 字符）"
