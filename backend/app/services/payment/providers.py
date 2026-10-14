@@ -20,14 +20,15 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import cast
 from urllib.parse import urlencode
 
 import httpx
+from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.serialization import load_pem_private_key, load_pem_public_key
 
 from app.core.config import get_settings
-
 
 # ============== 通用数据结构 ==============
 
@@ -88,15 +89,31 @@ class WechatPayProvider:
         self._private_key_pem = self.cfg.wxpay_mch_private_key
         self._public_key_pem = self.cfg.wxpay_public_key
         self._public_key_id = self.cfg.wxpay_public_key_id
-        if not all([self._mchid, self._appid, self._api_v3_key, self._serial_no, self._private_key_pem]):
-            raise RuntimeError("微信支付配置不完整：需要 mchid / appid / api_v3_key / serial_no / private_key")
-        self._private_key = load_pem_private_key(
-            self._private_key_pem.encode("utf-8"), password=None,
+        required = [
+            self._mchid,
+            self._appid,
+            self._api_v3_key,
+            self._serial_no,
+            self._private_key_pem,
+        ]
+        if not all(required):
+            raise RuntimeError(
+                "微信支付配置不完整：需要 mchid / appid / api_v3_key / serial_no / private_key"
+            )
+        self._private_key = cast(
+            rsa.RSAPrivateKey,
+            load_pem_private_key(
+                self._private_key_pem.encode("utf-8"), password=None,
+            ),
         )
         # 回调验签公钥（微信支付公钥，非商户 apiclient 证书）
+        self._public_key: rsa.RSAPublicKey | None
         if self._public_key_pem:
-            self._public_key = load_pem_public_key(
-                self._ensure_pem(self._public_key_pem, is_private=False).encode("utf-8"),
+            self._public_key = cast(
+                rsa.RSAPublicKey,
+                load_pem_public_key(
+                    self._ensure_pem(self._public_key_pem, is_private=False).encode("utf-8"),
+                ),
             )
         else:
             self._public_key = None
@@ -118,7 +135,7 @@ class WechatPayProvider:
         nonce = hashlib.sha256(f"{ts}{uuid.uuid4().hex}".encode()).hexdigest()[:32]
         sign_str = f"{method}\n{url_path}\n{ts}\n{nonce}\n{body}\n"
         sig = self._private_key.sign(sign_str.encode("utf-8"), padding.PKCS1v15(), hashes.SHA256())
-        return f"WECHATPAY2-SHA256-RSA2048 mchid=\"{self._mchid}\",nonce_str=\"{nonce}\",timestamp=\"{ts}\",serial_no=\"{self._serial_no}\",signature=\"{base64.b64encode(sig).decode()}\""
+        return f"WECHATPAY2-SHA256-RSA2048 mchid=\"{self._mchid}\",nonce_str=\"{nonce}\",timestamp=\"{ts}\",serial_no=\"{self._serial_no}\",signature=\"{base64.b64encode(sig).decode()}\""  # noqa: E501
 
     def _headers(self, method: str, url_path: str, body: str = "") -> dict:
         return {
@@ -260,7 +277,7 @@ class WechatPayProvider:
         openid = data.get("openid", "")
         if not openid or data.get("errcode"):
             raise RuntimeError(f"微信 OAuth 换 openid 失败: {data.get('errmsg', 'unknown')}")
-        return openid
+        return str(openid)
 
     def verify_callback(self, headers: dict, body: str) -> CallbackResult | None:
         """验签微信回调。返回 None 表示验签失败。
@@ -326,11 +343,17 @@ class AlipayProvider:
         self._gateway = self.cfg.alipay_gateway
         if not all([self._app_id, self._private_key_pem, self._public_key_pem]):
             raise RuntimeError("支付宝配置不完整：需要 app_id / private_key / public_key")
-        self._private_key = load_pem_private_key(
-            self._ensure_pem(self._private_key_pem).encode("utf-8"), password=None,
+        self._private_key = cast(
+            rsa.RSAPrivateKey,
+            load_pem_private_key(
+                self._ensure_pem(self._private_key_pem).encode("utf-8"), password=None,
+            ),
         )
-        self._alipay_public_key = load_pem_public_key(
-            self._ensure_pem(self._public_key_pem, is_private=False).encode("utf-8"),
+        self._alipay_public_key = cast(
+            rsa.RSAPublicKey,
+            load_pem_public_key(
+                self._ensure_pem(self._public_key_pem, is_private=False).encode("utf-8"),
+            ),
         )
 
     @staticmethod
@@ -350,10 +373,14 @@ class AlipayProvider:
         )
         from cryptography.hazmat.primitives import hashes
         from cryptography.hazmat.primitives.asymmetric import padding
-        sig = self._private_key.sign(sorted_str.encode("utf-8"), padding.PKCS1v15(), hashes.SHA256())
+        sig = self._private_key.sign(
+            sorted_str.encode("utf-8"), padding.PKCS1v15(), hashes.SHA256()
+        )
         return base64.b64encode(sig).decode()
 
-    def _build_common_params(self, method: str, biz_content: dict, notify_url: str, return_url: str = "") -> dict:
+    def _build_common_params(
+        self, method: str, biz_content: dict, notify_url: str, return_url: str = ""
+    ) -> dict:
         params: dict = {
             "app_id": self._app_id,
             "method": method,

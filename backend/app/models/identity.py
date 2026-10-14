@@ -31,11 +31,14 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import INET, JSONB, UUID as PGUUID
+from sqlalchemy.dialects.postgresql import INET, JSONB
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin
-from app.models.user import User  # OAuthIdentity.user 关系需要 User 类 (避免循环: User 不反向 import)
+from app.models.user import (
+    User,  # OAuthIdentity.user 关系需要 User 类 (避免循环: User 不反向 import)
+)
 
 
 # ============================================================
@@ -112,7 +115,11 @@ class VerificationCode(Base):
     )
 
     def is_valid(self) -> bool:
-        return self.used_at is None and self.attempt_count < self.max_attempts and self.expires_at > datetime.utcnow()
+        return (
+            self.used_at is None
+            and self.attempt_count < self.max_attempts
+            and self.expires_at > datetime.utcnow()
+        )
 
     def __repr__(self) -> str:
         return f"<VerificationCode {self.channel}:{self.purpose} target={self.target}>"

@@ -19,16 +19,16 @@ from app.services.payment.service import PaymentService
 
 
 def _payment(**kw) -> Payment:
-    defaults = dict(
-        id=uuid4(),
-        order_id=uuid4(),
-        user_id=uuid4(),
-        amount_cny=99.0,
-        status=PaymentStatus.PENDING,
-        channel=PaymentChannel.WECHAT,
-        channel_trade_no="",
-        created_at=datetime.now(UTC),
-    )
+    defaults = {
+        "id": uuid4(),
+        "order_id": uuid4(),
+        "user_id": uuid4(),
+        "amount_cny": 99.0,
+        "status": PaymentStatus.PENDING,
+        "channel": PaymentChannel.WECHAT,
+        "channel_trade_no": "",
+        "created_at": datetime.now(UTC),
+    }
     defaults.update(kw)
     return Payment(**defaults)
 

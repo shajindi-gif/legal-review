@@ -16,11 +16,11 @@ from __future__ import annotations
 import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import bcrypt
 import structlog
-from sqlalchemy import and_, func, select, update
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import CodeError, RateLimitedError, ValidationError
@@ -123,7 +123,12 @@ class VerificationService:
         )
         if recent is not None:
             remaining = PER_PHONE_COOLDOWN_SECONDS - int((now - recent.created_at).total_seconds())
-            _log.info("verify_code_cooldown", target=mask_phone(target), purpose=purpose, remaining=remaining)
+            _log.info(
+                "verify_code_cooldown",
+                target=mask_phone(target),
+                purpose=purpose,
+                remaining=remaining,
+            )
             raise RateLimitedError(
                 f"请 {max(1, remaining)} 秒后再试",
             )
@@ -183,27 +188,35 @@ class VerificationService:
         # ---- 发送 ----
         mock_code: str | None = None
         if channel == "sms":
-            result = await self._sms.send_code(
+            sms_result = await self._sms.send_code(
                 phone=target,
                 code=code,
                 purpose=purpose,
                 ttl_seconds=CODE_TTL_SECONDS,
             )
-            if not result.success:
-                _log.error("sms_send_failed", target=mask_phone(target), error=result.error_message)
+            if not sms_result.success:
+                _log.error(
+                    "sms_send_failed",
+                    target=mask_phone(target),
+                    error=sms_result.error_message,
+                )
                 raise CodeError("sms_send_failed", "短信发送失败, 请稍后重试", http_status=502)
-            mock_code = result.mock_code
+            mock_code = sms_result.mock_code
         else:
-            result = await self._email.send_code(
+            email_result = await self._email.send_code(
                 email=target,
                 code=code,
                 purpose=purpose,
                 ttl_seconds=CODE_TTL_SECONDS,
             )
-            if not result.success:
-                _log.error("email_send_failed", target=mask_email(target), error=result.error_message)
+            if not email_result.success:
+                _log.error(
+                    "email_send_failed",
+                    target=mask_email(target),
+                    error=email_result.error_message,
+                )
                 raise CodeError("email_send_failed", "邮件发送失败, 请稍后重试", http_status=502)
-            mock_code = result.mock_code
+            mock_code = email_result.mock_code
 
         masked = mask_phone(target) if channel == "sms" else mask_email(target)
         _log.info(
@@ -255,7 +268,9 @@ class VerificationService:
             _log.info("verify_code_not_found", target=mask_phone(target), purpose=purpose)
             raise CodeError("invalid_code", "验证码错误或已失效", http_status=400)
 
-        if row.expires_at < (now if row.expires_at.tzinfo is None else now.replace(tzinfo=row.expires_at.tzinfo)):
+        if row.expires_at < (
+            now if row.expires_at.tzinfo is None else now.replace(tzinfo=row.expires_at.tzinfo)
+        ):
             # 过期, 直接作废
             row.used_at = now
             await self._session.flush()
@@ -265,7 +280,11 @@ class VerificationService:
         if row.attempt_count >= row.max_attempts:
             row.used_at = now
             await self._session.flush()
-            _log.warning("verify_code_too_many_attempts", target=mask_phone(target), purpose=purpose)
+            _log.warning(
+                "verify_code_too_many_attempts",
+                target=mask_phone(target),
+                purpose=purpose,
+            )
             raise CodeError("code_locked", "验证码错误次数过多, 请重新获取", http_status=400)
 
         # 比对

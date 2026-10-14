@@ -25,7 +25,7 @@ async def close_redis() -> None:
     """关闭 Redis 客户端（应用关闭时调用）。"""
     global _client
     if _client is not None:
-        try:
+        try:  # noqa: SIM105 - best-effort 异步关闭, suppress 不支持 await
             await _client.aclose()
         except Exception:  # noqa: BLE001
             pass

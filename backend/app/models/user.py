@@ -74,10 +74,16 @@ class User(UUIDPkMixin, TimestampMixin, SoftDeleteMixin, Base):
     locale: Mapped[str] = mapped_column(String(16), nullable=False, default="zh-CN")
     timezone: Mapped[str] = mapped_column(String(64), nullable=False, default="Asia/Shanghai")
     # 验证时间戳
-    email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    phone_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    email_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    phone_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     # 密码 / 锁定
-    password_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    password_changed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     failed_login_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # 软删除
@@ -86,7 +92,9 @@ class User(UUIDPkMixin, TimestampMixin, SoftDeleteMixin, Base):
     # Onboarding
     onboarding_role: Mapped[str | None] = mapped_column(String(32), nullable=True)
     onboarding_purposes: Mapped[list | None] = mapped_column(JSONB, nullable=True)
-    onboarding_completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    onboarding_completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     # Super admin flag (手工置 true, 禁止 API 修改)
     is_super_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     # 同意条款

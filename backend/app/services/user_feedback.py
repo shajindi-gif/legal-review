@@ -14,7 +14,7 @@
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import desc, func, select
@@ -26,7 +26,7 @@ from app.schemas.user_feedback import UserFeedbackCreate
 
 
 def _utcnow() -> datetime:
-    return datetime.now(tz=timezone.utc)
+    return datetime.now(tz=UTC)
 
 
 class UserFeedbackService:

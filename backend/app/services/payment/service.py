@@ -23,6 +23,8 @@ from app.core.constants import (
     PaymentChannel,
     PaymentStatus,
     PayScene,
+    PlanTier,
+    SubscriptionStatus,
 )
 from app.core.errors import AppError, ValidationError
 from app.core.logging import get_logger
@@ -48,7 +50,7 @@ class PaymentService:
     def wx(self) -> WechatPayProvider:
         if self._wx is None:
             if not self._cfg.wxpay_enabled:
-                raise AppError("微信支付未启用", code="wxpay_disabled")
+                raise AppError(code="wxpay_disabled", message="微信支付未启用")
             self._wx = WechatPayProvider()
         return self._wx
 
@@ -56,7 +58,7 @@ class PaymentService:
     def ali(self) -> AlipayProvider:
         if self._ali is None:
             if not self._cfg.alipay_enabled:
-                raise AppError("支付宝未启用", code="alipay_disabled")
+                raise AppError(code="alipay_disabled", message="支付宝未启用")
             self._ali = AlipayProvider()
         return self._ali
 
@@ -78,7 +80,8 @@ class PaymentService:
         if plan_tier not in PLAN_PRICING_CENTS:
             raise ValidationError(f"不支持的套餐: {plan_tier}")
         if period_days not in PLAN_PRICING_CENTS[plan_tier]:
-            raise ValidationError(f"不支持的周期: {period_days} 天（可选: {list(PLAN_PRICING_CENTS[plan_tier].keys())}）")
+            options = list(PLAN_PRICING_CENTS[plan_tier].keys())
+            raise ValidationError(f"不支持的周期: {period_days} 天（可选: {options}）")
         if channel not in (PaymentChannel.WECHAT, PaymentChannel.ALIPAY):
             raise ValidationError(f"不支持的支付渠道: {channel}")
 
@@ -87,7 +90,9 @@ class PaymentService:
         if not pay_type:
             pay_type = PayScene.NATIVE if channel == PaymentChannel.WECHAT else PayScene.PAGE
         if pay_type not in valid_scenes:
-            raise ValidationError(f"渠道 {channel} 不支持的支付场景: {pay_type}（可选: {sorted(valid_scenes)}）")
+            raise ValidationError(
+                f"渠道 {channel} 不支持的支付场景: {pay_type}（可选: {sorted(valid_scenes)}）"
+            )
 
         amount_cents = PLAN_PRICING_CENTS[plan_tier][period_days]
 
@@ -119,7 +124,12 @@ class PaymentService:
         order_no = str(order.id)
 
         # 调用渠道下单
-        notify_url = f"{self._cfg.public_base_url}{self._cfg.wxpay_notify_path if channel == PaymentChannel.WECHAT else self._cfg.alipay_notify_path}"
+        notify_path = (
+            self._cfg.wxpay_notify_path
+            if channel == PaymentChannel.WECHAT
+            else self._cfg.alipay_notify_path
+        )
+        notify_url = f"{self._cfg.public_base_url}{notify_path}"
         description = f"法律审查{plan_tier.upper()}套餐-{period_days}天"
 
         if channel == PaymentChannel.WECHAT:
@@ -229,7 +239,11 @@ class PaymentService:
             payment = await self._session.scalar(stmt)
 
         if payment is None:
-            logger.error("payment_order_not_found", channel=channel, amount=verify_result.amount_cents)
+            logger.error(
+                "payment_order_not_found",
+                channel=channel,
+                amount=verify_result.amount_cents,
+            )
             return {"status": "fail", "message": "未找到对应订单"}
 
         # 并发防御：极端并发下已被另一请求处理
@@ -297,7 +311,10 @@ class PaymentService:
         """pending 订单超过 2h 未支付则关闭。返回是否已关闭。"""
         if order.status != PaymentStatus.PENDING:
             return False
-        if order.created_at is not None and datetime.now(UTC) - order.created_at > timedelta(minutes=PENDING_TIMEOUT_MINUTES):
+        if (
+            order.created_at is not None
+            and datetime.now(UTC) - order.created_at > timedelta(minutes=PENDING_TIMEOUT_MINUTES)
+        ):
             order.status = PaymentStatus.CLOSED
             await self._session.flush()
             logger.info("payment_order_closed_timeout", order_id=str(order.id))
@@ -320,8 +337,8 @@ class PaymentService:
         if plan is not None:
             # 续费/升级：从当前 expires_at 或 now 开始延长
             base = plan.expires_at if plan.expires_at and plan.expires_at > now else now
-            plan.tier = plan_tier
-            plan.status = "active"
+            plan.tier = PlanTier(plan_tier)
+            plan.status = SubscriptionStatus.ACTIVE
             plan.quota_daily = quota_daily
             plan.period_days = period_days
             plan.started_at = now
@@ -334,6 +351,7 @@ class PaymentService:
                 expires_at=plan.expires_at.isoformat(),
             )
         else:
+            expires_at = now + timedelta(days=period_days)
             plan = UserPlan(
                 id=uuid.uuid4(),
                 user_id=user_id,
@@ -342,7 +360,7 @@ class PaymentService:
                 quota_daily=quota_daily,
                 period_days=period_days,
                 started_at=now,
-                expires_at=now + timedelta(days=period_days),
+                expires_at=expires_at,
                 used_today=0,
                 free_trial_used=0,
                 free_trial_limit=FREE_TRIAL_LIMIT,
@@ -353,7 +371,7 @@ class PaymentService:
                 "plan_activated",
                 user_id=str(user_id),
                 tier=plan_tier,
-                expires_at=plan.expires_at.isoformat(),
+                expires_at=expires_at.isoformat(),
             )
 
     # ---- 查询 ----

@@ -18,7 +18,6 @@
 from __future__ import annotations
 
 import hashlib
-import os
 from abc import ABC, abstractmethod
 from typing import Any
 
@@ -64,7 +63,7 @@ class BGEM3LocalProvider(EmbeddingProvider):
 
     def __init__(self) -> None:
         self._settings = get_settings()
-        self._model = None  # 懒加载
+        self._model: Any = None  # 懒加载
 
     @property
     def name(self) -> str:
@@ -94,7 +93,7 @@ class BGEM3LocalProvider(EmbeddingProvider):
         self._load()
         # SentenceTransformer 是同步接口，包到 async 调用
         vec = self._model.encode(text, normalize_embeddings=True)
-        return vec.tolist()
+        return list(vec.tolist())
 
     async def batch_embed(self, texts: list[str]) -> list[list[float]]:
         if not texts:

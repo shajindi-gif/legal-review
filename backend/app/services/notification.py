@@ -13,10 +13,11 @@
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from typing import Any, cast
 from uuid import UUID
 
-from sqlalchemy import desc, func, select, update
+from sqlalchemy import CursorResult, desc, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import NotFoundError
@@ -24,7 +25,7 @@ from app.models.notification import Notification
 
 
 def _utcnow() -> datetime:
-    return datetime.now(tz=timezone.utc)
+    return datetime.now(tz=UTC)
 
 
 class NotificationService:
@@ -138,4 +139,4 @@ class NotificationService:
             .values(read_at=_utcnow())
             .execution_options(synchronize_session=False)
         )
-        return int(result.rowcount or 0)
+        return int(cast("CursorResult[Any]", result).rowcount or 0)

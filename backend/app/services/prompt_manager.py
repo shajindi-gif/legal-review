@@ -183,7 +183,7 @@ class PromptManager:
             raise ValidationError(
                 f"prompt_key={prompt_key} 未配置 active_version"
             )
-        return version
+        return str(version)
 
     # ---------- 加载 PromptSpec ----------
     def get_active(self, prompt_key: str) -> PromptSpec:
@@ -286,6 +286,8 @@ class PromptManager:
         missing: list[str] = []
         for var_def in spec.variables:
             name = var_def.get("name")
+            if not isinstance(name, str):
+                continue
             required = var_def.get("required", False)
             if not required:
                 continue
@@ -326,7 +328,7 @@ class PromptManager:
             if existing is not None:
                 # 已存在，更新状态为 active（如需要）
                 if existing.status != PromptStatus.ACTIVE.value:
-                    existing.status = PromptStatus.ACTIVE.value
+                    existing.status = PromptStatus.ACTIVE
                     existing.activated_at = datetime.utcnow()
                     await session.flush()
                     synced += 1
@@ -390,7 +392,7 @@ class PromptManager:
         )
         old_active = old_result.scalar_one_or_none()
         if old_active is not None:
-            old_active.status = PromptStatus.DEPRECATED.value
+            old_active.status = PromptStatus.DEPRECATED
 
         # 新版本置为 active
         new_result = await session.execute(
@@ -403,7 +405,7 @@ class PromptManager:
         if prompt is None:
             raise NotFoundError("Prompt", f"{prompt_key}@{version}")
 
-        prompt.status = PromptStatus.ACTIVE.value
+        prompt.status = PromptStatus.ACTIVE
         prompt.eval_pass_rate = eval_pass_rate
         prompt.activated_at = datetime.utcnow()
         await session.flush()
@@ -437,7 +439,7 @@ class PromptManager:
         if prompt is None:
             raise NotFoundError("Prompt", f"{prompt_key}@{version}")
 
-        prompt.status = PromptStatus.DEPRECATED.value
+        prompt.status = PromptStatus.DEPRECATED
         await session.flush()
 
         # 清缓存

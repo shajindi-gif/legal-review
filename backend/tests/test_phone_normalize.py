@@ -6,7 +6,6 @@ import pytest
 from app.core.errors import ValidationError
 from app.utils.phone import mask_phone, normalize_phone
 
-
 # ============== normalize_phone ==============
 
 

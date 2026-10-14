@@ -201,7 +201,7 @@ class RAGSearchService:
         req = RAGSearchRequest(
             query=query,
             top_k=top_k,
-            law_status=law_status,  # type: ignore[arg-type]
+            law_status=law_status,
         )
         resp = await self.search(req)
         return resp.items

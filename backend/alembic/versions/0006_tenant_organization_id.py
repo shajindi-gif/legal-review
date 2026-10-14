@@ -23,17 +23,18 @@ Create Date: 2026-08-26
 """
 from __future__ import annotations
 
-from typing import Sequence, Union
+import contextlib
+from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
 
+from alembic import op
 
 # revision identifiers
 revision: str = "0006"
-down_revision: Union[str, None] = "0005"
-branch_labels: Union[str, Sequence[str, None], None] = None
-depends_on: Union[str, Sequence[str, None], None] = None
+down_revision: str | None = "0005"
+branch_labels: str | Sequence[str, None] | None = None
+depends_on: str | Sequence[str, None] | None = None
 
 
 def _add_org_id_column(table_name: str) -> None:
@@ -202,14 +203,10 @@ def downgrade() -> None:
         cols = {c["name"] for c in inspector.get_columns(table)}
         if "organization_id" in cols:
             # 先删索引 / FK
-            try:
+            with contextlib.suppress(Exception):
                 op.drop_index(f"ix_{table}_organization", table_name=table)
-            except Exception:
-                pass
-            try:
+            with contextlib.suppress(Exception):
                 op.drop_constraint(
                     f"fk_{table}_organization_id", table_name=table, type_="foreignkey"
                 )
-            except Exception:
-                pass
             op.drop_column(table, "organization_id")

@@ -19,7 +19,7 @@ logger = get_logger("tools.ocr")
 _ocr_instance = None  # 懒加载单例
 
 
-def _get_ocr():
+def _get_ocr() -> Any:
     """懒加载 PaddleOCR 实例。"""
     global _ocr_instance
     if _ocr_instance is None:

@@ -40,9 +40,6 @@ class QuotaService:
             )
             self._session.add(plan)
             await self._session.flush()
-        elif plan.free_trial_limit is None:
-            # 历史记录回填默认上限
-            plan.free_trial_limit = FREE_TRIAL_LIMIT
         return plan
 
     def is_unlimited(self, plan: UserPlan) -> bool:

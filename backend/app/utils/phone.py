@@ -86,8 +86,5 @@ def mask_email(email: str) -> str:
     if not email or "@" not in email:
         return "***"
     local, domain = email.split("@", 1)
-    if len(local) <= 1:
-        head = local
-    else:
-        head = local[0] + "***"
+    head = local if len(local) <= 1 else local[0] + "***"
     return f"{head}@{domain}"

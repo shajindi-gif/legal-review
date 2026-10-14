@@ -21,6 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from dotenv import load_dotenv
+
 load_dotenv()
 # 切到 DashScope embedding（真实向量）
 os.environ.setdefault("EMBEDDING_BACKEND", "api")
@@ -29,7 +30,6 @@ from app.core.constants import LawLevel, LawType
 from app.db.session import get_session_factory
 from app.schemas.legal import LegalDocumentCreate
 from app.services.legal_library import LegalLibraryService
-
 
 # ============== 1. 行政处罚法（2021修订）核心条款 ==============
 ADMIN_PENALTY_LAW = """中华人民共和国行政处罚法
@@ -224,6 +224,7 @@ async def seed() -> None:
                 await session.commit()
                 # 用 SQL 统计，避免 async session 访问 lazy 关系触发 MissingGreenlet
                 from sqlalchemy import func, select
+
                 from app.models.legal import LegalClause
                 cnt_result = await session.execute(
                     select(func.count(), func.count(LegalClause.embedding))

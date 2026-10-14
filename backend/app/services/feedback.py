@@ -127,8 +127,8 @@ class FeedbackCaseService:
         record = result.scalar_one_or_none()
         if record is None:
             raise NotFoundError("FeedbackCase", str(case_id))
-        record.incorporated = True  # type: ignore[misc]
-        record.prompt_version_after = prompt_version_after  # type: ignore[assignment]
+        record.incorporated = True
+        record.prompt_version_after = prompt_version_after
         await self._session.commit()
         logger.info(
             "feedback_incorporated",

@@ -26,9 +26,9 @@ from app.core.errors import AppError
 from app.core.logging import get_logger
 from app.models.document import Document
 from app.models.task import ReviewTask
-from app.models.user import User
 from app.schemas.document import DocumentUploadResponse
 from app.services.audit import AuditService
+from app.services.core_auth_client import CorePrincipal
 from app.services.core_user_bridge import ensure_local_user_for_core_principal
 from app.services.quota_service import QuotaService
 from app.services.sandbox import SandboxService
@@ -47,7 +47,7 @@ async def upload_document(
     file: UploadFile = File(..., description="送审文件，≤50MB，支持 docx/pdf/png/jpg/jpeg/txt"),
     title: str | None = Header(default=None, alias="X-Task-Title"),
     priority: str = Header(default=TaskPriority.NORMAL.value, alias="X-Priority"),
-    current_user: User = Depends(get_current_user),
+    current_user: CorePrincipal = Depends(get_current_user),
     sandbox: SandboxService = Depends(get_sandbox_dep),
     db: AsyncSession = Depends(get_db),
     audit: AuditService = Depends(get_audit_service),

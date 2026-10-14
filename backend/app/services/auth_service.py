@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 from datetime import UTC, datetime
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 import bcrypt
@@ -30,7 +31,7 @@ import jwt
 #
 # opportunistic rehash: 登录成功时若命中 bcrypt, 后台异步重哈希为 Argon2id
 import structlog
-from sqlalchemy import select, update
+from sqlalchemy import CursorResult, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -49,9 +50,9 @@ try:
     _HAS_ARGON2 = True
 except ImportError:  # noqa: BLE001
     _HAS_ARGON2 = False
-    _Argon2PasswordHasher = None
-    InvalidHashError = Exception
-    VerifyMismatchError = Exception
+    _Argon2PasswordHasher = None  # type: ignore[assignment,misc]
+    InvalidHashError = Exception  # type: ignore[assignment,misc]
+    VerifyMismatchError = Exception  # type: ignore[assignment,misc]
 
 
 _log = structlog.get_logger("auth.password")
@@ -60,9 +61,10 @@ _argon2_hasher = _Argon2PasswordHasher() if _HAS_ARGON2 else None
 
 def hash_password(plain: str) -> str:
     """新用户统一使用 Argon2id, 失败时回退 bcrypt (确保历史路径继续工作)。"""
-    if _HAS_ARGON2:
+    hasher = _argon2_hasher
+    if _HAS_ARGON2 and hasher is not None:
         try:
-            return _argon2_hasher.hash(plain)
+            return hasher.hash(plain)
         except Exception:  # noqa: BLE001
             _log.warning("argon2_hash_failed_fallback_bcrypt")
     salt = bcrypt.gensalt(rounds=12)
@@ -73,12 +75,19 @@ def verify_password(plain: str, hashed: str) -> bool:
     """根据哈希前缀自动选择算法; 始终不会抛异常。"""
     if not hashed:
         return False
-    if hashed.startswith("$argon2id$") or hashed.startswith("$argon2i$") or hashed.startswith("$argon2$"):
+    if (
+        hashed.startswith("$argon2id$")
+        or hashed.startswith("$argon2i$")
+        or hashed.startswith("$argon2$")
+    ):
         if not _HAS_ARGON2:
             _log.error("argon2_hash_present_but_lib_missing")
             return False
+        hasher = _argon2_hasher
+        if hasher is None:
+            return False
         try:
-            _argon2_hasher.verify(hashed, plain)
+            hasher.verify(hashed, plain)
             return True
         except VerifyMismatchError:
             return False
@@ -102,8 +111,11 @@ def needs_rehash(hashed: str) -> bool:
     if not _HAS_ARGON2:
         return False
     if hashed.startswith("$argon2id$"):
+        hasher = _argon2_hasher
+        if hasher is None:
+            return True
         try:
-            return _argon2_hasher.check_needs_rehash(hashed)
+            return hasher.check_needs_rehash(hashed)
         except (InvalidHashError, Exception):  # noqa: BLE001
             return True
     return True
@@ -579,7 +591,7 @@ class AuthService:
             .values(revoked_at=now, revoke_reason="logout_all")
         )
         await self._session.flush()
-        return result.rowcount or 0
+        return cast(CursorResult[Any], result).rowcount or 0
 
     async def list_sessions(self, user_id: UUID) -> list[dict]:
         """列出用户未撤销的会话（refresh token）。"""

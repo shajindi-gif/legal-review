@@ -22,7 +22,8 @@ from sqlalchemy import Select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.constants import OrganizationType, UserRole
-from app.models.user import Organization, User
+from app.models.user import Organization
+from app.services.core_auth_client import CorePrincipal
 
 
 def is_team_org(org: Organization | None) -> bool:
@@ -36,12 +37,12 @@ def is_team_org(org: Organization | None) -> bool:
     return str(org.type) != str(OrganizationType.PERSONAL)
 
 
-def is_super_admin(user: User) -> bool:
+def is_super_admin(user: CorePrincipal) -> bool:
     """超级管理员可跨租户访问。"""
     return bool(user.is_super_admin) or str(user.role) == str(UserRole.ADMIN)
 
 
-def get_effective_org_id(user: User) -> UUID | None:
+def get_effective_org_id(user: CorePrincipal) -> UUID | None:
     """用户当前生效的 organization_id。
 
     规则:
@@ -50,7 +51,7 @@ def get_effective_org_id(user: User) -> UUID | None:
     return user.organization_id
 
 
-def can_view_org(user: User, target_org_id: UUID) -> bool:
+def can_view_org(user: CorePrincipal, target_org_id: UUID) -> bool:
     """判断 user 是否有权访问 target_org_id 的数据。
 
     规则:
@@ -68,7 +69,7 @@ def can_view_org(user: User, target_org_id: UUID) -> bool:
 
 def apply_org_filter(
     stmt: Select[Any],
-    user: User,
+    user: CorePrincipal,
     org: Organization | None,
     *,
     user_id_column: Any = None,
@@ -116,7 +117,7 @@ def _get_org_column(stmt: Select[Any]) -> Any:
 
 def apply_org_filter_with_column(
     stmt: Select[Any],
-    user: User,
+    user: CorePrincipal,
     org: Organization | None,
     *,
     org_column: Any,
@@ -141,7 +142,7 @@ def apply_org_filter_with_column(
 
 
 async def load_user_org(
-    session: AsyncSession, user: User
+    session: AsyncSession, user: CorePrincipal
 ) -> Organization | None:
     """加载用户所属组织 (避免 N+1, 配合 eager loading)."""
     if user.organization_id is None:

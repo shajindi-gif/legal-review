@@ -69,10 +69,11 @@ class SmtpEmailProvider(EmailProvider):
             f"若非本人操作，请忽略本邮件。\n"
         )
         msg = MIMEText(body, "plain", "utf-8")
-        msg["Subject"] = Header(subject, "utf-8")
+        msg["Subject"] = Header(subject, "utf-8").encode()
         msg["From"] = from_addr
         msg["To"] = email
 
+        server: smtplib.SMTP
         if self._use_tls and self._port == 465:
             server = smtplib.SMTP_SSL(self._host, self._port, timeout=15)
         else:

@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_actor, get_audit_service, get_db
 from app.core.constants import AuditAction, GoldenCategory
+from app.models.platform import EvalRun, GoldenDataset
 from app.schemas.eval import (
     EvalRunCreate,
     EvalRunRead,
@@ -35,7 +36,7 @@ def get_eval_runner(session: AsyncSession = Depends(get_db)) -> EvalRunner:
     return EvalRunner(session)
 
 
-def _to_read(case) -> GoldenCaseRead:
+def _to_read(case: GoldenDataset) -> GoldenCaseRead:
     return GoldenCaseRead(
         id=case.id,
         case_name=case.case_name,
@@ -48,7 +49,7 @@ def _to_read(case) -> GoldenCaseRead:
     )
 
 
-def _to_run_read(run) -> EvalRunRead:
+def _to_run_read(run: EvalRun) -> EvalRunRead:
     return EvalRunRead(
         id=run.id,
         run_id=run.run_id,

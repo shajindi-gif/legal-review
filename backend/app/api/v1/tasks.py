@@ -9,32 +9,33 @@
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import desc, func, select
+from sqlalchemy import Select, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import TenantContext, get_db, get_tenant_context
 from app.core.errors import AppError, NotFoundError
 from app.models.document import Document
 from app.models.task import ReviewResult, ReviewTask
-from app.models.user import User
 from app.schemas.document import DocumentRead
-from app.schemas.task import TaskRead, TaskStatusResponse, TaskListResponse
+from app.schemas.task import TaskListResponse, TaskRead, TaskStatusResponse
+from app.services.core_auth_client import CorePrincipal
 from app.services.tenant import apply_org_filter_with_column
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
 
-def _can_view_all(user: User) -> bool:
+def _can_view_all(user: CorePrincipal) -> bool:
     """判断用户是否有权查看全部任务。"""
     return str(user.role) in {"supervisor", "admin"}
 
 
 def _filter_by_tenant(
-    stmt, ctx: TenantContext, *, with_submitter: bool = True
-):
+    stmt: Select[Any], ctx: TenantContext, *, with_submitter: bool = True
+) -> Select[Any]:
     """根据租户上下文过滤任务。
 
     - super_admin: 不过滤

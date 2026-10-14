@@ -48,8 +48,7 @@ async def emit_node_running(
     """节点开始运行时发出通知。"""
     label = _label(node_name)
     try:
-        await NotificationService.create(
-            db,
+        await NotificationService(db).create(
             recipient_id=recipient_id,
             kind="node_running",
             title=f"节点「{label}」开始运行",
@@ -80,8 +79,7 @@ async def emit_node_done(
     """节点运行完成时发出通知。"""
     label = _label(node_name)
     try:
-        await NotificationService.create(
-            db,
+        await NotificationService(db).create(
             recipient_id=recipient_id,
             kind="node_done",
             title=f"节点「{label}」已完成",

@@ -81,6 +81,10 @@ async def _ensure_personal_org(
     这样 legal-review 端可以用同一 UUID 在 Core / 本地两侧互查。
     """
     org_id = principal.tenant_id
+    if org_id is None:
+        raise RuntimeError(
+            "Core principal is missing tenant_id; cannot ensure personal organization"
+        )
     existing = await session.get(Organization, org_id)
     if existing is not None:
         return org_id

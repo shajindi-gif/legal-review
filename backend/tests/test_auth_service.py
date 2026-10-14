@@ -7,12 +7,6 @@ Strangler 双跑（Phase 4 Pilot）后：本地 AuthService 已冻结（git 保�
 
 from __future__ import annotations
 
-import pytest
-
-pytestmark = pytest.mark.skip(
-    reason="Strangler 双跑：本地 AuthService 已冻结，由 yance-core packages/auth 承担",
-)
-
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
@@ -37,6 +31,10 @@ try:
     from app.services.auth_service import _HAS_ARGON2  # noqa: F401
 except ImportError:  # pragma: no cover
     _HAS_ARGON2 = False
+
+pytestmark = pytest.mark.skip(
+    reason="Strangler 双跑：本地 AuthService 已冻结，由 yance-core packages/auth 承担",
+)
 
 
 def _make_session_mock() -> MagicMock:

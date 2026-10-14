@@ -136,7 +136,7 @@ async def list_identities(
         ),
         LinkedIdentityOut(channel="password", bound=has_password),
     ]
-    for provider, label in (
+    for provider, _label in (
         ("wechat", "微信"),
         ("qq", "QQ"),
         ("weibo", "微博"),

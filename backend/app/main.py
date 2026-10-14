@@ -1,10 +1,11 @@
 """FastAPI 应用入口。"""
 
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 from app.api.v1 import api_router
 from app.api.v1 import health as health_router
@@ -17,7 +18,7 @@ from app.services.rate_limit import check_and_incr
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """应用生命周期：启动/关闭钩子。"""
     setup_logging()
     logger = get_logger("app")
@@ -52,7 +53,9 @@ def create_app() -> FastAPI:
 
     # trace_id 中间件
     @app.middleware("http")
-    async def trace_id_middleware(request: Request, call_next):
+    async def trace_id_middleware(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
         from uuid import uuid4
 
         trace_id = request.headers.get("X-Trace-Id") or str(uuid4())
@@ -63,7 +66,9 @@ def create_app() -> FastAPI:
 
     # API 边缘限流（per-IP 兜底，Redis 固定窗口，超限 429）
     @app.middleware("http")
-    async def rate_limit_middleware(request: Request, call_next):
+    async def rate_limit_middleware(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
         if settings.rate_limit_enabled:
             path = request.url.path.strip("/")
             if path not in settings.rate_limit_exempt_path_set:
@@ -87,7 +92,7 @@ def create_app() -> FastAPI:
 
     # 全局异常处理
     @app.exception_handler(AppError)
-    async def app_error_handler(request: Request, exc: AppError):
+    async def app_error_handler(request: Request, exc: AppError) -> Response:
         logger = get_logger("api")
         logger.warning(
             "app_error",

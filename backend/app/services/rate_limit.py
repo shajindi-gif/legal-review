@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import time
 from collections import defaultdict, deque
-from typing import Deque
 
 import structlog
 
@@ -24,8 +23,9 @@ from app.core.redis import get_redis, is_redis_alive
 
 _log = structlog.get_logger("auth.rate_limit")
 
-# ============== 内存降级 (Redis 不可用时使用, 仅限单进程; 多 uvicorn worker 各自计数) ==============
-_inmem_buckets: dict[str, Deque[float]] = defaultdict(deque)
+# ============== 内存降级 (Redis 不可用时使用) ==============
+# 仅限单进程; 多 uvicorn worker 各自计数
+_inmem_buckets: dict[str, deque[float]] = defaultdict(deque)
 
 
 def _inmem_check_and_incr(scope: str, key: str, limit: int, window_seconds: int) -> None:

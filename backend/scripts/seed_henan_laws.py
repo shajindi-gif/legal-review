@@ -20,16 +20,17 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from dotenv import load_dotenv
+
 load_dotenv()
 os.environ.setdefault("EMBEDDING_BACKEND", "api")
 
 from sqlalchemy import func, select
+
 from app.core.constants import LawLevel, LawType
 from app.db.session import get_session_factory
 from app.models.legal import LegalClause
 from app.schemas.legal import LegalDocumentCreate
 from app.services.legal_library import LegalLibraryService
-
 
 # ============== 1. 河南省行政合法性审查工作规定（2023年第219号令）==============
 HENAN_LEGALITY_REVIEW_REG = """河南省行政合法性审查工作规定

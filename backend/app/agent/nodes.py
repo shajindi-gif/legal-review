@@ -25,7 +25,7 @@
 from __future__ import annotations
 
 import time
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 from sqlalchemy import select
@@ -80,7 +80,7 @@ def _format_legal_context(legal_context: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-def _parse_evidence(data: dict[str, Any]) -> Evidence:
+def _parse_evidence(data: Any) -> Evidence:
     """从 LLM 输出解析 Evidence（Pydantic）。
 
     防护：data 非 dict 时返回空 Evidence（LLM 偶发返回 string/null）。
@@ -95,7 +95,7 @@ def _parse_evidence(data: dict[str, Any]) -> Evidence:
     )
 
 
-def _parse_risk_item(data: dict[str, Any]) -> RiskItem:
+def _parse_risk_item(data: Any) -> RiskItem:
     """从 LLM 输出解析 RiskItem（Pydantic）。
 
     防护：data 非 dict 时返回空 RiskItem。
@@ -119,9 +119,9 @@ def _parse_risk_item(data: dict[str, Any]) -> RiskItem:
     elif isinstance(anchor, str) and anchor:
         paragraph_id = anchor
     return RiskItem(
-        dimension=data.get("dimension", "content"),  # type: ignore[arg-type]
+        dimension=data.get("dimension", "content"),
         risk_type=str(data.get("risk_type", "")),
-        severity=data.get("severity", "medium"),  # type: ignore[arg-type]
+        severity=data.get("severity", "medium"),
         paragraph_id=paragraph_id,
         paragraph_anchor=anchor if isinstance(anchor, str) else None,
         evidence=_parse_evidence(evidence_data) if evidence_data else Evidence(
@@ -191,7 +191,7 @@ async def _run_llm_node(
     # registry.yaml 的 model_name 字段仅作文档参考，不参与运行时路由。
     provider = get_llm_provider()
     try:
-        raw = await provider.complete_json(
+        raw: Any = await provider.complete_json(
             prompt,
             temperature=spec.temperature,
             max_tokens=max_tokens,
@@ -352,10 +352,7 @@ async def doc_parse_node(state: ReviewState) -> ReviewState:
 
             # 数字 PDF 空段落 → OCR fallback
             if parsed.get("_needs_ocr"):
-                if ftype == "pdf":
-                    parsed = ocr_pdf_pages(abs_path)
-                else:
-                    parsed = ocr_image(abs_path)
+                parsed = ocr_pdf_pages(abs_path) if ftype == "pdf" else ocr_image(abs_path)
 
             # 更新 document.parsed_json + parse_status
             document.parsed_json = parsed
@@ -745,17 +742,20 @@ async def risk_assessment_node(state: ReviewState) -> ReviewState:
     """
     import json
 
+    authority = state.get("authority_result")
+    procedure = state.get("procedure_result")
+    content = state.get("content_result")
     variables = {
         "authority_result": json.dumps(
-            state.get("authority_result").model_dump() if state.get("authority_result") else {},
+            authority.model_dump() if authority else {},
             ensure_ascii=False,
         ),
         "procedure_result": json.dumps(
-            state.get("procedure_result").model_dump() if state.get("procedure_result") else {},
+            procedure.model_dump() if procedure else {},
             ensure_ascii=False,
         ),
         "content_result": json.dumps(
-            state.get("content_result").model_dump() if state.get("content_result") else {},
+            content.model_dump() if content else {},
             ensure_ascii=False,
         ),
     }
@@ -771,7 +771,7 @@ async def risk_assessment_node(state: ReviewState) -> ReviewState:
     # 写入 overall_status
     overall = raw.get("overall_status")
     if overall in ("pass", "risk", "fail"):
-        state["overall_status"] = overall  # type: ignore[assignment]
+        state["overall_status"] = overall
 
     state["risk_result"] = output
     return state
@@ -847,7 +847,7 @@ async def evidence_verify_node(state: ReviewState) -> ReviewState:
             trace_id=state["trace_id"],
             missing=harness_missing,
         )
-        output.node_status = NodeStatus.RETRY
+        output.node_status = "retry"
         output.raw_json["harness_missing"] = harness_missing
         # 路由表：evidence_verify RETRY → legal_retrieve（重新检索法规补证据）
         output.raw_json["next_node"] = "legal_retrieve"
@@ -855,7 +855,7 @@ async def evidence_verify_node(state: ReviewState) -> ReviewState:
         # 全部通过：信任 LLM 的 node_status 判断（PASS/RETRY）
         output.raw_json["harness_missing"] = {}
         output.raw_json["next_node"] = (
-            "report_generation" if output.node_status == NodeStatus.PASS else "legal_retrieve"
+            "report_generation" if output.node_status == "pass" else "legal_retrieve"
         )
 
     state["verify_result"] = output
@@ -879,7 +879,7 @@ async def report_generation_node(state: ReviewState) -> ReviewState:
 
     # 收集全部 evidences
     for key in ("authority_result", "procedure_result", "content_result", "risk_result"):
-        result = state.get(key)
+        result = cast(AgentOutput | None, state.get(key))
         if result is None:
             continue
         for ev in result.evidences:
@@ -889,6 +889,10 @@ async def report_generation_node(state: ReviewState) -> ReviewState:
                 "original_text": ev.original_text,
             })
 
+    authority = state.get("authority_result")
+    procedure = state.get("procedure_result")
+    content = state.get("content_result")
+    risk = state.get("risk_result")
     variables = {
         "doc_info": json.dumps({
             "title": doc_json.get("title", ""),
@@ -898,19 +902,19 @@ async def report_generation_node(state: ReviewState) -> ReviewState:
         }, ensure_ascii=False),
         "overall_status": state.get("overall_status", "pass"),
         "authority_result": json.dumps(
-            state.get("authority_result").model_dump() if state.get("authority_result") else {},
+            authority.model_dump() if authority else {},
             ensure_ascii=False,
         ),
         "procedure_result": json.dumps(
-            state.get("procedure_result").model_dump() if state.get("procedure_result") else {},
+            procedure.model_dump() if procedure else {},
             ensure_ascii=False,
         ),
         "content_result": json.dumps(
-            state.get("content_result").model_dump() if state.get("content_result") else {},
+            content.model_dump() if content else {},
             ensure_ascii=False,
         ),
         "risk_result": json.dumps(
-            state.get("risk_result").model_dump() if state.get("risk_result") else {},
+            risk.model_dump() if risk else {},
             ensure_ascii=False,
         ),
         "all_evidences": json.dumps(all_evidences, ensure_ascii=False),
@@ -1048,7 +1052,7 @@ async def trigger_doc_parse_background(*, task_id: UUID, document_id: UUID) -> N
         graph = build_review_graph()
         async for chunk in graph.astream(state, stream_mode="updates"):
             # chunk: dict[str, dict] - {node_name: state_update}
-            for node_name in chunk.keys():
+            for node_name in chunk:
                 if not isinstance(node_name, str) or node_name in completed_nodes:
                     continue
                 if recipient_id is None:
@@ -1070,7 +1074,7 @@ async def trigger_doc_parse_background(*, task_id: UUID, document_id: UUID) -> N
                     )
 
             # 一个节点 chunk 出现 = 该节点已执行完一次更新
-            for node_name in chunk.keys():
+            for node_name in chunk:
                 if not isinstance(node_name, str) or node_name in completed_nodes:
                     continue
                 completed_nodes.add(node_name)

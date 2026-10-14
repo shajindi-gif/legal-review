@@ -21,6 +21,7 @@ from app.api.deps import get_current_user, get_db
 from app.core.config import get_settings
 from app.core.constants import FREE_TRIAL_LIMIT, PlanTier
 from app.core.errors import AppError
+from app.models.user import User
 from app.schemas.auth import (
     EmailSendRequest,
     EmailSendResponse,
@@ -134,7 +135,7 @@ def _client_ua(request: Request) -> str | None:
     return request.headers.get("user-agent")
 
 
-def _local_user_out(user) -> dict:
+def _local_user_out(user: User) -> dict:
     """本地 User ORM → UserOut 兼容 dict。"""
     tier = PlanTier.FREE
     quota_daily = FREE_TRIAL_LIMIT

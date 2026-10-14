@@ -57,7 +57,7 @@ class TaskListResponse(BaseModel):
     total: int
     page: int
     page_size: int
-    items: list["TaskRead"]
+    items: list[TaskRead]
 
 
 class ReviewTriggerRequest(BaseModel):

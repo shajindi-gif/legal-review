@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from dataclasses import dataclass
 from typing import Literal
 from uuid import UUID
@@ -140,7 +140,7 @@ async def get_current_user_optional(
     if not authorization or not authorization.startswith("Bearer "):
         return None
     try:
-        return await get_current_user(authorization, session)  # type: ignore[arg-type]
+        return await get_current_user(authorization, session)
     except AuthError:
         return None
 
@@ -148,7 +148,7 @@ async def get_current_user_optional(
 RoleLiteral = Literal["submitter", "reviewer", "supervisor", "admin", "librarian"]
 
 
-def require_role(*allowed_roles: RoleLiteral):
+def require_role(*allowed_roles: RoleLiteral) -> Callable[..., Awaitable[CorePrincipal]]:
     """角色守卫工厂：仅允许指定角色访问。
 
     用法：``current_user: User = Depends(require_role("admin"))``
@@ -185,7 +185,7 @@ class TenantContext:
 
 
 async def get_tenant_context(
-    current_user: User = Depends(get_current_user),
+    current_user: CorePrincipal = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> TenantContext:
     """组合 user + org + 团队/超管标记。

@@ -10,7 +10,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import desc, or_, select
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db

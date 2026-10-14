@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import sys
+from typing import cast
 
 import structlog
 
@@ -50,7 +51,7 @@ def setup_logging() -> None:
 
 def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:
     """获取 logger。"""
-    return structlog.get_logger(name)
+    return cast(structlog.stdlib.BoundLogger, structlog.get_logger(name))
 
 
 def bind_trace_id(trace_id: str) -> None:

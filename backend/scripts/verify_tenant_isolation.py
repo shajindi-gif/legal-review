@@ -25,7 +25,6 @@ import uuid
 
 import httpx
 
-
 BASE_URL = "http://127.0.0.1:8000"
 
 
@@ -72,9 +71,9 @@ async def main() -> int:
         tasks = r.json().get("items", r.json()) if isinstance(r.json(), dict) else r.json()
         visible = any(t.get("id") == task_id for t in tasks)
         if not visible:
-            print(f"FAIL: 创建者看不到自己的 task（可能 organization_id 写入失败）")
+            print("FAIL: 创建者看不到自己的 task（可能 organization_id 写入失败）")
             return 1
-        print(f"  ✓ 创建者能看见自己的 task")
+        print("  ✓ 创建者能看见自己的 task")
 
         # 用另一个 phone 登录（应该是另一个 user）
         other_phone = "13900000002"
@@ -93,7 +92,7 @@ async def main() -> int:
         if leaked:
             print(f"FAIL: 数据串租！另一用户能看到 task {task_id}")
             return 1
-        print(f"  ✓ 另一用户看不到该 task（隔离生效）")
+        print("  ✓ 另一用户看不到该 task（隔离生效）")
 
         print("\n✅ 多租户隔离冒烟通过")
         return 0

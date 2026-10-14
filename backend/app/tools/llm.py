@@ -24,7 +24,7 @@ import asyncio
 import json
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
@@ -68,6 +68,7 @@ class LLMProvider:
         max_tokens: int = 4096,
         json_mode: bool = False,
         trace_id: str | None = None,
+        tier: str | None = None,
     ) -> LLMResponse:
         raise NotImplementedError
 
@@ -114,7 +115,7 @@ class LLMProvider:
                 "model": resp.model,
                 "provider": resp.provider,
             }
-        return data
+        return cast(dict[str, Any], data)
 
 
 # ============== 令牌桶限流 ==============

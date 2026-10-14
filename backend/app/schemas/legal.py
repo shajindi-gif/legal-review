@@ -79,7 +79,7 @@ class RAGSearchRequest(BaseModel):
     # 元数据过滤
     law_types: list[LawType] | None = None
     law_levels: list[LawLevel] | None = None
-    law_status: list[LawStatus] | None = Field(default=["effective"])
+    law_status: list[LawStatus] | None = Field(default_factory=lambda: [LawStatus.EFFECTIVE])
     # 权重（混合检索）
     vector_weight: float = Field(default=0.7, ge=0.0, le=1.0)
     keyword_weight: float = Field(default=0.3, ge=0.0, le=1.0)

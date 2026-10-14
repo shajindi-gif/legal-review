@@ -55,7 +55,7 @@ def parse_docx(path: Path) -> dict[str, Any]:
     issuing_authority = None
     doc_number = None
     # 常见发文机关关键词（长前缀优先匹配，避免短词抢匹配）
-    _AUTHORITY_KEYWORDS = (
+    _authority_keywords = (
         "人民政府", "人民政府办公室", "办公室", "委员会", "办公厅",
         "司法局", "司法厅", "司法部",
         "管理局", "监督局", "监管局",
@@ -69,7 +69,7 @@ def parse_docx(path: Path) -> dict[str, Any]:
         if "发〔" in text and doc_number is None:
             doc_number = text[:128]
         if issuing_authority is None and 4 <= len(text) <= 64:
-            for kw in _AUTHORITY_KEYWORDS:
+            for kw in _authority_keywords:
                 if kw in text:
                     issuing_authority = text[:128]
                     break

@@ -213,7 +213,7 @@ class LegalLibraryService:
             raise NotFoundError("LegalDocument", str(law_id))
 
         old_status = law.status
-        law.status = new_status.value
+        law.status = new_status
         if replaced_by_law_id is not None:
             law.parent_law_id = replaced_by_law_id
 
@@ -228,7 +228,7 @@ class LegalLibraryService:
         return law
 
     async def _update_status(self, law: LegalDocument, new_status: LawStatus) -> None:
-        law.status = new_status.value
+        law.status = new_status
         await self._session.flush()
 
     # ============== 查询 ==============

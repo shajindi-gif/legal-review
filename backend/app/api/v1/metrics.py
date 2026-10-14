@@ -26,7 +26,8 @@ async def get_metrics() -> dict:
 @router.get("/nodes")
 async def get_node_metrics() -> dict:
     """节点级指标明细。"""
-    return get_metrics_collector().snapshot().get("nodes", {})
+    nodes: dict = get_metrics_collector().snapshot().get("nodes", {})
+    return nodes
 
 
 @router.get("/prometheus")
