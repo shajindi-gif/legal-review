@@ -1,0 +1,11 @@
+# 防 macOS AppleDouble / 系统垃圾进入镜像
+# （alembic 按 *.py 通配加载 versions/，._x.py 为 NUL 开头的二进制，
+#  会导致 "SyntaxError: source code string cannot contain null bytes"）
+._*
+.DS_Store
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/

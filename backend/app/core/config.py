@@ -179,7 +179,9 @@ class Settings(BaseSettings):
     # ---- API 边缘限流（per-IP 兜底，Redis 固定窗口，超限 429）----
     rate_limit_enabled: bool = True
     rate_limit_per_ip_per_min: int = 300  # 每 IP 每分钟最大请求数
-    rate_limit_exempt_paths: str = "/health,/docs,/redoc,/api/v1/openapi.json"
+    rate_limit_exempt_paths: str = (
+        "/health,/docs,/redoc,/api/v1/openapi.json,/api/v1/metrics/prometheus"
+    )
 
     # ---- CORS ----
     # 逗号分隔字符串(pydantic-settings 对 list 类型要求 JSON 数组,
