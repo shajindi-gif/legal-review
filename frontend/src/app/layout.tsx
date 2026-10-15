@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Noto_Serif_SC } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
 
@@ -11,6 +11,14 @@ const geistSans = Geist({
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+});
+
+// 衬线展示字体：中文衬线标题营造法律文书的正式感（仅用于大标题 / 区块标题，正文仍为无衬线）
+const notoSerifSC = Noto_Serif_SC({
+  weight: ["600", "700"],
+  subsets: ["latin"],
+  variable: "--font-noto-serif-sc",
+  display: "swap",
 });
 
 // 强制全站动态渲染（SSR）：CSP nonce 方案要求每次请求随机 nonce，
@@ -31,7 +39,7 @@ export default function RootLayout({
   return (
     <html
       lang="zh-CN"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${notoSerifSC.variable} h-full antialiased`}
     >
       <body className="min-h-full bg-gray-50 text-gray-900">
         <Providers>{children}</Providers>

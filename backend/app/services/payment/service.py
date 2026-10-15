@@ -28,6 +28,7 @@ from app.core.constants import (
 )
 from app.core.errors import AppError, ValidationError
 from app.core.logging import get_logger
+from app.models.analytics import AnalyticsEvent
 from app.models.user import Order, Payment, UserPlan
 from app.services.payment.providers import AlipayProvider, CallbackResult, WechatPayProvider
 
@@ -276,6 +277,24 @@ class PaymentService:
             plan_tier=order.plan_tier,
             period_days=order.period_days,
         )
+
+        # 商业化埋点：order_paid（best-effort，任何异常绝不影响支付主流程）
+        try:
+            self._session.add(
+                AnalyticsEvent(
+                    user_id=order.user_id,
+                    event="order_paid",
+                    properties={
+                        "order_id": str(order.id),
+                        "amount_cents": verify_result.amount_cents,
+                        "plan_tier": order.plan_tier,
+                        "channel": channel,
+                    },
+                )
+            )
+        except Exception as e:
+            logger.warning("analytics_order_paid_failed", error=str(e))
+
         return {"status": "success", "message": "OK"}
 
     # ---- 主动查单补偿（回调可能不来）+ 超时关单 ----
