@@ -94,7 +94,7 @@ export function TopBar({ onMenuClick }: TopBarProps) {
             法
           </div>
           <span className="text-base font-semibold text-brand-700 hidden sm:inline">
-            智审 · LegaReview
+            智审 · LegalReview
           </span>
         </Link>
       </div>

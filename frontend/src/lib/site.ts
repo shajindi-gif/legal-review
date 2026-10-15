@@ -3,7 +3,7 @@
 
 export const siteInfo = {
   // 品牌
-  name: "智审 · LegaReview",
+  name: "智审 · LegalReview",
   domain: "legalai86.com.cn",
 
   // 经营主体（2026-10-15 运营方提供）

@@ -1,6 +1,6 @@
 # 02 竞品对标分析（Competitor Analysis）
 
-> 产品：智审 LegaReview（legalai86.com.cn）· 行政规范性文件智能合法性审查 SaaS
+> 产品：智审 LegalReview（legalai86.com.cn）· 行政规范性文件智能合法性审查 SaaS
 > 调研日期：2026-10-14 · 方法：公开网页/新闻/定价页检索，全部结论附来源链接
 > 原则：只写有真实依据的信息；无法验证的标注「未知」；不凭空推测竞品收入与用户量
 
