@@ -124,7 +124,7 @@ export default function PricingPage() {
               法
             </div>
             <span className="text-base font-semibold tracking-tight text-neutral-900">
-              智审 <span className="font-normal text-neutral-500">·</span> LegaReview
+              智审 <span className="font-normal text-neutral-500">·</span> LegalReview
             </span>
           </Link>
           <PricingHeaderActions />

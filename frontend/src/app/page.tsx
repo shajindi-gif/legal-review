@@ -204,7 +204,7 @@ export default function HomePage() {
               法
             </div>
             <span className="text-base font-semibold tracking-tight text-neutral-900">
-              智审 <span className="font-normal text-neutral-500">·</span> LegaReview
+              智审 <span className="font-normal text-neutral-500">·</span> LegalReview
             </span>
           </Link>
           <nav className="hidden items-center gap-7 text-sm text-neutral-600 md:flex">
