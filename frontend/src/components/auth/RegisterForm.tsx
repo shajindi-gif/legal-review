@@ -4,6 +4,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { register } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth";
+import { track } from "@/lib/analytics";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,6 +17,7 @@ export function RegisterForm() {
   const [password, setPassword] = React.useState("");
   const [realName, setRealName] = React.useState("");
   const [company, setCompany] = React.useState("");
+  const [agreed, setAgreed] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -31,6 +33,8 @@ export function RegisterForm() {
         realName.trim() || undefined,
       );
       setAuth(res.access_token, res.user);
+      // 商业化埋点：注册成功
+      track("signup_submit");
       router.replace("/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "注册失败");
@@ -93,7 +97,27 @@ export function RegisterForm() {
               {error}
             </p>
           )}
-          <Button type="submit" disabled={loading} className="w-full">
+          {/* 个保法合规：注册前必须明示同意用户协议与隐私政策 */}
+          <label className="flex items-start gap-2 text-sm leading-relaxed text-neutral-600">
+            <input
+              type="checkbox"
+              required
+              checked={agreed}
+              onChange={(e) => setAgreed(e.target.checked)}
+              className="mt-0.5 h-4 w-4 flex-shrink-0 accent-brand-600"
+            />
+            <span>
+              我已阅读并同意
+              <a href="/terms" target="_blank" className="mx-0.5 font-medium text-brand-700 hover:underline">
+                《服务条款》
+              </a>
+              与
+              <a href="/privacy" target="_blank" className="mx-0.5 font-medium text-brand-700 hover:underline">
+                《隐私政策》
+              </a>
+            </span>
+          </label>
+          <Button type="submit" disabled={loading || !agreed} className="w-full">
             {loading ? "注册中…" : "注册并开始"}
           </Button>
           <p className="text-center text-sm text-neutral-500">

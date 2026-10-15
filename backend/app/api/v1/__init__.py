@@ -7,6 +7,7 @@ from fastapi import APIRouter
 from app.api.v1 import (
     account,
     admin_user_feedback,
+    analytics,
     audit,
     auth,
     billing,
@@ -36,5 +37,6 @@ api_router.include_router(search.router)
 api_router.include_router(user_feedback.router)
 api_router.include_router(admin_user_feedback.router)
 api_router.include_router(billing.router)
+api_router.include_router(analytics.router)
 
 __all__ = ["api_router"]

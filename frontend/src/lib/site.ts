@@ -1,7 +1,4 @@
 // 站点合规信息（经营主体 / 备案 / 联系方式 / 政策生效日）。
-//
-// ⚠️ 以下字段均为【待确认】占位，需运营方核实后填入正式值后方可对外发布。
-// 在填写前，页脚与政策页面会自动显示「主体信息待补充」，不会把占位值冒充为正式信息。
 // 填入正式值后，全站 footer / 隐私政策 / 用户协议 / Cookie 政策自动生效。
 
 export const siteInfo = {
@@ -9,18 +6,18 @@ export const siteInfo = {
   name: "智审 · LegaReview",
   domain: "legalai86.com.cn",
 
-  // 经营主体（待确认）
-  legalEntityName: "", // 例："北京某某科技有限公司"
-  unifiedSocialCreditCode: "", // 统一社会信用代码（用于开票落款）
-  officeAddress: "", // 办公地址
+  // 经营主体（2026-10-15 运营方提供）
+  legalEntityName: "上海衍策引擎人工智能科技有限公司",
+  unifiedSocialCreditCode: "", // 统一社会信用代码（用于开票落款，待补）
+  officeAddress: "", // 办公地址（待补）
 
-  // 备案（待确认）
-  icpRecord: "", // 例："京ICP备2025xxxxxx号-1"
-  icpSecurityRecord: "", // 例："京公网安备110101xxxxxxxx号"
+  // 备案（2026-10-15 运营方提供）
+  icpRecord: "沪ICP备2026045851号-4",
+  icpSecurityRecord: "", // 公安备案号（待补）
 
-  // 联系方式（待确认）
-  contactEmail: "", // 例："legal@legalai86.com.cn"
-  contactPhone: "", // 例："010-xxxxxxx"
+  // 联系方式（2026-10-15 运营方提供）
+  contactEmail: "yanceai@163.com",
+  contactPhone: "",
 
   // 政策生效日期（待确认）
   policyEffectiveDate: "", // 例："2026-08-26"

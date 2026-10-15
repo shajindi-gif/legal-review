@@ -73,6 +73,8 @@
   /* 字体 */
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  /* 衬线展示字体（法律文书正式感）：由 layout.tsx 经 next/font 加载，生成 font-display 工具类 */
+  --font-display: var(--font-noto-serif-sc), "Noto Serif SC", "Songti SC", "SimSun", ui-serif, serif;
 
   /* 间距 4 / 8 / 12 / 16 / 24 / 32 / 48 / 64 */
   --spacing-page-x: 24px;
