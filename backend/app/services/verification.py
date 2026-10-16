@@ -61,10 +61,22 @@ class VerificationService:
         session: AsyncSession,
         sms: SMSProvider | None = None,
         email: EmailProvider | None = None,
+        *,
+        settings=None,
     ) -> None:
         self._session = session
         self._sms = sms or get_sms_provider()
         self._email = email or get_email_provider()
+        # 阈值接线到配置（config.py verification_*），缺省回退模块常量（测试兼容）
+        if settings is None:
+            from app.core.config import get_settings
+            settings = get_settings()
+        self.code_ttl = getattr(settings, "verification_code_ttl_seconds", None) or CODE_TTL_SECONDS
+        self.max_attempts = getattr(settings, "verification_code_max_attempts", None) or MAX_VERIFY_ATTEMPTS
+        self.cooldown_seconds = getattr(settings, "verification_per_target_cooldown_seconds", None) or PER_PHONE_COOLDOWN_SECONDS
+        self.ip_window_seconds = getattr(settings, "verification_per_ip_window_seconds", None) or PER_IP_WINDOW_SECONDS
+        self.ip_max_sends = getattr(settings, "verification_per_ip_max_sends", None) or PER_IP_MAX_SENDS
+        self.target_daily_max = getattr(settings, "verification_per_target_daily_max", None) or PER_PHONE_DAILY_MAX
 
     @staticmethod
     def _generate_code() -> str:
@@ -108,21 +120,21 @@ class VerificationService:
         now = datetime.now(UTC).replace(tzinfo=None)
 
         # ---- 限流 1: 同手机号 60s 内不能重发 ----
-        last_60s = now - timedelta(seconds=PER_PHONE_COOLDOWN_SECONDS)
+        last_cooldown = now - timedelta(seconds=self.cooldown_seconds)
         recent = await self._session.scalar(
             select(VerificationCode)
             .where(
                 and_(
                     VerificationCode.target == target,
                     VerificationCode.purpose == purpose,
-                    VerificationCode.created_at > last_60s,
+                    VerificationCode.created_at > last_cooldown,
                 )
             )
             .order_by(VerificationCode.created_at.desc())
             .limit(1)
         )
         if recent is not None:
-            remaining = PER_PHONE_COOLDOWN_SECONDS - int((now - recent.created_at).total_seconds())
+            remaining = self.cooldown_seconds - int((now - recent.created_at).total_seconds())
             _log.info(
                 "verify_code_cooldown",
                 target=mask_phone(target),
@@ -135,7 +147,7 @@ class VerificationService:
 
         # ---- 限流 2: 单 IP 5/10min ----
         if ip_address:
-            window_start = now - timedelta(seconds=PER_IP_WINDOW_SECONDS)
+            window_start = now - timedelta(seconds=self.ip_window_seconds)
             ip_count = await self._session.scalar(
                 select(func.count(VerificationCode.id))
                 .where(
@@ -145,7 +157,7 @@ class VerificationService:
                     )
                 )
             )
-            if ip_count is not None and ip_count >= PER_IP_MAX_SENDS:
+            if ip_count is not None and ip_count >= self.ip_max_sends:
                 _log.warning("verify_code_ip_rate_limit", ip=ip_address, count=ip_count)
                 raise RateLimitedError()
 
@@ -160,14 +172,14 @@ class VerificationService:
                 )
             )
         )
-        if day_count is not None and day_count >= PER_PHONE_DAILY_MAX:
+        if day_count is not None and day_count >= self.target_daily_max:
             _log.warning("verify_code_daily_limit", target=mask_phone(target), count=day_count)
             raise RateLimitedError("今日发送次数已达上限, 明天再试")
 
         # ---- 生成 + 落库 + 发送 ----
         code = self._generate_code()
         code_hash = self._hash_code(code)
-        expires_at = now + timedelta(seconds=CODE_TTL_SECONDS)
+        expires_at = now + timedelta(seconds=self.code_ttl)
 
         row = VerificationCode(
             id=uuid4(),
@@ -177,7 +189,7 @@ class VerificationService:
             code_hash=code_hash,
             expires_at=expires_at,
             attempt_count=0,
-            max_attempts=MAX_VERIFY_ATTEMPTS,
+            max_attempts=self.max_attempts,
             used_at=None,
             ip_address=ip_address,
             user_agent=user_agent,
@@ -192,7 +204,7 @@ class VerificationService:
                 phone=target,
                 code=code,
                 purpose=purpose,
-                ttl_seconds=CODE_TTL_SECONDS,
+                ttl_seconds=self.code_ttl,
             )
             if not sms_result.success:
                 _log.error(
@@ -207,7 +219,7 @@ class VerificationService:
                 email=target,
                 code=code,
                 purpose=purpose,
-                ttl_seconds=CODE_TTL_SECONDS,
+                ttl_seconds=self.code_ttl,
             )
             if not email_result.success:
                 _log.error(
@@ -224,10 +236,10 @@ class VerificationService:
             target=masked,
             purpose=purpose,
             channel=channel,
-            ttl=CODE_TTL_SECONDS,
+            ttl=self.code_ttl,
         )
 
-        return SendResult(expires_in=CODE_TTL_SECONDS, mock_code=mock_code)
+        return SendResult(expires_in=self.code_ttl, mock_code=mock_code)
 
     # ==========================================================
     # 校验验证码

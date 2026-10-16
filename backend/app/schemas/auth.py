@@ -35,9 +35,9 @@ class TokenResponse(BaseModel):
 
 
 class RefreshRequest(BaseModel):
-    """刷新 Token 请求。"""
+    """刷新 Token 请求（refresh_token 可空：优先读 HttpOnly Cookie）。"""
 
-    refresh_token: str
+    refresh_token: str | None = None
 
 
 class UserOut(BaseModel):
@@ -190,9 +190,107 @@ class LoginMethodsResponse(BaseModel):
 
 
 class LogoutRequest(BaseModel):
-    """登出请求：撤销当前会话的 refresh token。"""
+    """登出请求：撤销当前会话的 refresh token（body 可空，优先读 HttpOnly Cookie）。"""
 
     refresh_token: str | None = None
+
+
+# ============== 统一账号升级（P0）：本地密码注册/登录 + 密码管理 + 绑定 + 会话 ==============
+
+
+class PasswordRegisterRequest(BaseModel):
+    """本地邮箱密码注册请求。
+
+    - 邮箱格式由 EmailStr 校验
+    - 密码遵循 NIST：长度 8-128，不强制组合规则（系统有验证码+登录限流兜底）
+    - agreed_terms 必须为 true（个保法合规，前端有勾选框）
+    """
+
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=128)
+    real_name: str | None = Field(default=None, max_length=64)
+    company: str | None = Field(default=None, max_length=128)
+    agreed_terms: bool = Field(default=True)
+
+
+class PasswordLoginRequest(BaseModel):
+    """本地密码登录请求（identifier 统一入口）。
+
+    identifier 为邮箱或手机号（后端自动识别）；password 为明文密码。
+    """
+
+    identifier: str = Field(min_length=3, max_length=128)
+    password: str = Field(min_length=1, max_length=128)
+
+
+class ForgotPasswordRequest(BaseModel):
+    """忘记密码：向邮箱发送 reset_password 验证码（防枚举：恒返回成功）。"""
+
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    """重置密码：邮箱 + 验证码 + 新密码。成功后撤销该用户全部会话。"""
+
+    email: EmailStr
+    code: str = Field(min_length=4, max_length=8)
+    new_password: str = Field(min_length=8, max_length=128)
+
+
+class ChangePasswordRequest(BaseModel):
+    """修改密码（需登录）：验证当前密码后设置新密码。"""
+
+    current_password: str = Field(min_length=1, max_length=128)
+    new_password: str = Field(min_length=8, max_length=128)
+
+
+class BindAccountRequest(BaseModel):
+    """绑定/换绑手机号或邮箱（需登录）：验证码校验通过后写入。"""
+
+    channel: Literal["phone", "email"]
+    target: str = Field(min_length=3, max_length=255)
+    code: str = Field(min_length=4, max_length=8)
+    # 未绑定时 bind_*；已绑定换新时 change_*（前端按当前绑定状态选择）
+    purpose: Literal["bind_phone", "change_phone", "bind_email", "change_email"] = (
+        "bind_phone"
+    )
+
+
+class BindAccountResponse(BaseModel):
+    """绑定结果。"""
+
+    success: bool = True
+    channel: str
+    target: str  # 归一化后的值
+
+
+class UpdateProfileRequest(BaseModel):
+    """更新基本资料（需登录）。"""
+
+    real_name: str | None = Field(default=None, min_length=1, max_length=64)
+    company: str | None = Field(default=None, max_length=128)
+
+
+class AccountProfileResponse(BaseModel):
+    """用户中心账户资料（含验证状态与偏好）。"""
+
+    id: UUID
+    username: str
+    real_name: str | None = None
+    email: str | None = None
+    email_verified: bool = False
+    phone: str | None = None
+    phone_verified: bool = False
+    company: str | None = None
+    role: str
+    plan_tier: str = "free"
+    locale: str = "zh-CN"
+    timezone: str = "Asia/Shanghai"
+    created_at: datetime | None = None
+    last_login_at: datetime | None = None
+    has_password: bool = False
+
+    model_config = {"from_attributes": True}
 
 
 class SessionOut(BaseModel):

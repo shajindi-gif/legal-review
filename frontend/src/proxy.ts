@@ -16,6 +16,7 @@ const PROTECTED = [
   "/report",
   "/admin",
   "/notifications",
+  "/account",
 ];
 
 function buildCspHeader(nonce: string): string {
@@ -54,10 +55,12 @@ export function proxy(request: NextRequest) {
     return res;
   }
 
-  const token = request.cookies.get("lr_token")?.value;
-  if (!token) {
+  // UX 层守卫：读非凭证 hint cookie（登录后由 JS 写入的 "1"）。
+  // 真正鉴权始终在后端 JWT（Authorization: Bearer），此处只做跳转优化。
+  const hint = request.cookies.get("lr_hint")?.value;
+  if (!hint) {
     const loginUrl = new URL("/login", request.url);
-    loginUrl.searchParams.set("redirect", pathname);
+    loginUrl.searchParams.set("redirect", pathname + (request.nextUrl.search || ""));
     return NextResponse.redirect(loginUrl);
   }
 

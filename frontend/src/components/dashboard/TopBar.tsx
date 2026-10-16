@@ -17,6 +17,7 @@ import {
   Keyboard,
 } from "lucide-react";
 import { useAuthStore } from "@/lib/auth";
+import { logout as logoutApi } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { NotificationBell } from "@/components/dashboard/NotificationBell";
@@ -47,9 +48,14 @@ export function TopBar({ onMenuClick }: TopBarProps) {
   const newTriggerRef = React.useRef<HTMLButtonElement | null>(null);
   const [searchOpen, setSearchOpen] = React.useState(false);
 
-  function handleLogout() {
-    logout();
-    router.replace("/login");
+  // 登出：先撤销后端 refresh 会话（清 lr_rt Cookie），失败也照常清本地态
+  async function handleLogout() {
+    try {
+      await logoutApi();
+    } finally {
+      logout();
+      router.replace("/login");
+    }
   }
 
   function openNewMenu() {
@@ -255,6 +261,12 @@ export function TopBar({ onMenuClick }: TopBarProps) {
                   <Shield className="h-4 w-4" /> 管理后台
                 </DropdownMenu.Item>
               )}
+              <DropdownMenu.Item
+                onSelect={() => router.push("/account")}
+                className="flex cursor-pointer items-center gap-2 rounded px-3 py-2 text-sm outline-none data-[highlighted]:bg-brand-50"
+              >
+                <UserIcon className="h-4 w-4" /> 账户设置
+              </DropdownMenu.Item>
               <DropdownMenu.Item
                 onSelect={handleLogout}
                 className="flex cursor-pointer items-center gap-2 rounded px-3 py-2 text-sm text-red-600 outline-none data-[highlighted]:bg-red-50"

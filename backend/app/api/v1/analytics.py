@@ -39,6 +39,17 @@ EVENT_WHITELIST: frozenset[str] = frozenset(
         "order_paid",
         "landing_view",
         "custom_error",
+        # ---- 认证转化漏斗（P0 升级）----
+        "auth_page_view",
+        "signup_start",
+        "signup_success",
+        "login_success",
+        "login_failed",
+        "verification_sent",
+        "verification_success",
+        "verification_failed",
+        "password_reset_success",
+        "onboarding_completed",
     }
 )
 
