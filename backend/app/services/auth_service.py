@@ -698,7 +698,8 @@ class AuthService:
 
     async def find_by_email(self, email: str) -> User | None:
         """按邮箱查找用户（内部用，不抛枚举信息）。"""
-        return await self._session.scalar(select(User).where(User.email == email))
+        user: User | None = await self._session.scalar(select(User).where(User.email == email))
+        return user
 
     async def bind_identity(self, user: User, *, channel: str, target: str) -> str:
         """绑定/换绑手机号或邮箱（验证码已由调用方校验）。

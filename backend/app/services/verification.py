@@ -16,6 +16,7 @@ from __future__ import annotations
 import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import uuid4
 
 import bcrypt
@@ -62,7 +63,7 @@ class VerificationService:
         sms: SMSProvider | None = None,
         email: EmailProvider | None = None,
         *,
-        settings=None,
+        settings: Any = None,
     ) -> None:
         self._session = session
         self._sms = sms or get_sms_provider()
@@ -71,12 +72,25 @@ class VerificationService:
         if settings is None:
             from app.core.config import get_settings
             settings = get_settings()
-        self.code_ttl = getattr(settings, "verification_code_ttl_seconds", None) or CODE_TTL_SECONDS
-        self.max_attempts = getattr(settings, "verification_code_max_attempts", None) or MAX_VERIFY_ATTEMPTS
-        self.cooldown_seconds = getattr(settings, "verification_per_target_cooldown_seconds", None) or PER_PHONE_COOLDOWN_SECONDS
-        self.ip_window_seconds = getattr(settings, "verification_per_ip_window_seconds", None) or PER_IP_WINDOW_SECONDS
-        self.ip_max_sends = getattr(settings, "verification_per_ip_max_sends", None) or PER_IP_MAX_SENDS
-        self.target_daily_max = getattr(settings, "verification_per_target_daily_max", None) or PER_PHONE_DAILY_MAX
+        self.code_ttl = (
+            getattr(settings, "verification_code_ttl_seconds", None) or CODE_TTL_SECONDS
+        )
+        self.max_attempts = (
+            getattr(settings, "verification_code_max_attempts", None) or MAX_VERIFY_ATTEMPTS
+        )
+        self.cooldown_seconds = (
+            getattr(settings, "verification_per_target_cooldown_seconds", None)
+            or PER_PHONE_COOLDOWN_SECONDS
+        )
+        self.ip_window_seconds = (
+            getattr(settings, "verification_per_ip_window_seconds", None) or PER_IP_WINDOW_SECONDS
+        )
+        self.ip_max_sends = (
+            getattr(settings, "verification_per_ip_max_sends", None) or PER_IP_MAX_SENDS
+        )
+        self.target_daily_max = (
+            getattr(settings, "verification_per_target_daily_max", None) or PER_PHONE_DAILY_MAX
+        )
 
     @staticmethod
     def _generate_code() -> str:

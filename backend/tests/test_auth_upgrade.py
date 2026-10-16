@@ -32,7 +32,6 @@ from app.core.errors import AppError, AuthError, error_response
 from app.services import core_auth_client as cac
 from app.services.auth_service import hash_password
 
-
 # ============== Fakes ==============
 
 
@@ -114,7 +113,7 @@ def _make_app(session: MagicMock) -> FastAPI:
     async def _app_error_handler(request, exc: AppError):
         return JSONResponse(status_code=exc.http_status, content=error_response(exc))
 
-    from app.api.deps import get_db, get_current_user
+    from app.api.deps import get_current_user, get_db
 
     principal = cac.CorePrincipal(
         id=uuid4(),
@@ -143,8 +142,8 @@ def _make_app(session: MagicMock) -> FastAPI:
 
 @pytest.fixture
 def fake_core(monkeypatch) -> FakeCore:
-    from app.api.v1 import auth as auth_mod
     from app.api import deps as deps_mod
+    from app.api.v1 import auth as auth_mod
 
     fake = FakeCore()
     monkeypatch.setattr(auth_mod, "get_core_auth_client", lambda: fake)
@@ -236,7 +235,11 @@ async def test_login_password_local_success(client, fake_core) -> None:
     assert fake_core.login_calls == 0  # 本地命中不触 Core
     # 登录审计已写入
     from app.models.identity import UserLoginEvent
-    events = [c.args[0] for c in session.add.call_args_list if isinstance(c.args[0], UserLoginEvent)]
+    events = [
+        c.args[0]
+        for c in session.add.call_args_list
+        if isinstance(c.args[0], UserLoginEvent)
+    ]
     assert any(e.success and e.login_method == "password" for e in events)
 
 
@@ -282,7 +285,11 @@ async def test_login_password_local_failure_writes_audit(client, fake_core) -> N
     })
     session: MagicMock = client._session_mock
     from app.models.identity import UserLoginEvent
-    events = [c.args[0] for c in session.add.call_args_list if isinstance(c.args[0], UserLoginEvent)]
+    events = [
+        c.args[0]
+        for c in session.add.call_args_list
+        if isinstance(c.args[0], UserLoginEvent)
+    ]
     assert any(not e.success and e.failure_reason == "bad_credentials" for e in events)
 
 
@@ -468,7 +475,6 @@ async def test_account_bind_purpose_channel_mismatch_422(client, monkeypatch) ->
 
 @pytest.mark.asyncio
 async def test_list_sessions_returns_list(client) -> None:
-    from app.services.auth_service import AuthService
 
     session: MagicMock = client._session_mock
     exec_result = MagicMock()
@@ -495,20 +501,13 @@ async def test_revoke_session_other_users_returns_404(client) -> None:
 @pytest.mark.asyncio
 async def test_revoke_session_own_returns_success(client) -> None:
     session: MagicMock = client._session_mock
-    # get_current_user 的 principal.id 与 rt.user_id 一致
-    from app.api.deps import get_current_user
-    app = client._transport.app  # type: ignore[attr-defined]
-    principal = app.dependency_overrides[get_current_user].__wrapped__ if hasattr(
-        app.dependency_overrides[get_current_user], "__wrapped__"
-    ) else None
-
-    # 直接构造：rt.user_id == principal.id
     # principal 从 override 闭包外取不到，改为通过第二次请求验证成功路径
     rt = MagicMock()
     rt.user_id = uuid4()
     rt.revoked_at = None
     session.get.return_value = rt
     # 覆盖 get_current_user 返回的 principal.id 与 rt.user_id 对齐
+    from app.api.deps import get_current_user
     from app.services import core_auth_client as cac
 
     async def _current_user_aligned():
@@ -517,6 +516,7 @@ async def test_revoke_session_own_returns_success(client) -> None:
             role="submitter", is_active=True,
         )
 
+    app = client._transport.app  # type: ignore[attr-defined]
     app.dependency_overrides[get_current_user] = _current_user_aligned
     resp = await client.delete(f"/auth/sessions/{uuid4()}")
     assert resp.status_code == 200, resp.text

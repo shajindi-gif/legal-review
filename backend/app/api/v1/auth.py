@@ -118,7 +118,7 @@ def _refresh_from_request(request: Request, body_token: str | None) -> str | Non
 def _log_login_event(
     session: AsyncSession,
     *,
-    user_id=None,
+    user_id: UUID | None = None,
     identifier: str | None,
     method: str,
     success: bool,
@@ -284,7 +284,11 @@ async def register_password(
     """
     _require_channel(get_settings().auth_password_enabled, "密码注册")
     if not body.agreed_terms:
-        raise AppError(code="terms_required", message="请先阅读并同意服务条款与隐私政策", http_status=400)
+        raise AppError(
+            code="terms_required",
+            message="请先阅读并同意服务条款与隐私政策",
+            http_status=400,
+        )
 
     email = normalize_email(body.email)
     auth = AuthService(session)
