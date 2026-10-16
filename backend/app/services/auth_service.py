@@ -40,6 +40,7 @@ from app.core.constants import FREE_TRIAL_LIMIT, OrganizationType, PlanTier, Use
 from app.core.errors import AuthError, ConflictError, NotFoundError, ValidationError
 from app.models.identity import RefreshToken
 from app.models.user import Organization, User, UserPlan
+from app.utils.phone import normalize_email, normalize_phone
 
 try:
     from argon2 import PasswordHasher as _Argon2PasswordHasher
@@ -618,3 +619,108 @@ class AuthService:
                 }
             )
         return out
+
+    async def revoke_session_by_id(self, user_id: UUID, session_id: UUID) -> bool:
+        """撤销指定会话（校验属主，防越权）。返回是否实际撤销。"""
+        rt = await self._session.get(RefreshToken, session_id)
+        if rt is None or rt.user_id != user_id or rt.revoked_at is not None:
+            return False
+        rt.revoked_at = datetime.now(UTC)
+        rt.revoke_reason = "user_revoke"
+        await self._session.flush()
+        return True
+
+    async def revoke_other_user_tokens(self, user_id: UUID, keep_raw: str) -> int:
+        """撤销除 keep_raw 对应会话外的所有未撤销 refresh token（改密码场景保留当前设备）。"""
+        keep_hash = self._hash_token(keep_raw)
+        now = datetime.now(UTC)
+        result = await self._session.execute(
+            update(RefreshToken)
+            .where(
+                RefreshToken.user_id == user_id,
+                RefreshToken.revoked_at.is_(None),
+                RefreshToken.token_hash != keep_hash,
+            )
+            .values(revoked_at=now, revoke_reason="password_changed")
+        )
+        await self._session.flush()
+        return cast(CursorResult[Any], result).rowcount or 0
+
+    # ---------- 密码管理（P0 升级） ----------
+
+    async def set_password(self, user: User, new_password: str) -> None:
+        """直接设置新密码（重置密码场景，调用方已完成验证码校验）。"""
+        user.password_hash = hash_password(new_password)
+        user.password_changed_at = datetime.now(UTC).replace(tzinfo=None)
+        user.failed_login_count = 0
+        user.locked_until = None
+        await self._session.flush()
+
+    async def change_password(
+        self, user: User, current_password: str, new_password: str
+    ) -> None:
+        """修改密码：校验当前密码 → 写入新 hash。失败抛 AuthError。"""
+        if not user.password_hash or not verify_password(current_password, user.password_hash):
+            raise AuthError("当前密码错误")
+        if current_password == new_password:
+            raise ValidationError("新密码不能与当前密码相同")
+        await self.set_password(user, new_password)
+
+    async def authenticate_by_identifier(
+        self, *, identifier: str, password: str
+    ) -> User:
+        """统一身份密码登录：identifier 自动识别邮箱 / 手机号（本地账号）。
+
+        防枚举：不存在与密码错误统一文案「邮箱/手机号或密码错误」。
+        """
+        ident = identifier.strip()
+        if "@" in ident:
+            email_norm = normalize_email(ident)
+            user = await self._session.scalar(select(User).where(User.email == email_norm))
+        else:
+            phone_norm = normalize_phone(ident)
+            user = await self._session.scalar(select(User).where(User.phone == phone_norm))
+        if user is None or not user.password_hash:
+            raise AuthError("账号或密码错误")
+        if not verify_password(password, user.password_hash):
+            raise AuthError("账号或密码错误")
+        if str(user.status) != str(UserStatus.ACTIVE):
+            raise AuthError(f"账号状态异常: {user.status}")
+
+        new_hash = opportunistic_rehash(user, password)
+        if new_hash is not None:
+            user.password_hash = new_hash
+            user.password_changed_at = datetime.now(UTC).replace(tzinfo=None)
+        user.last_login_at = datetime.now(UTC).replace(tzinfo=None)
+        await self._session.flush()
+        await self._session.refresh(user, attribute_names=["plan"])
+        return user
+
+    async def find_by_email(self, email: str) -> User | None:
+        """按邮箱查找用户（内部用，不抛枚举信息）。"""
+        user: User | None = await self._session.scalar(select(User).where(User.email == email))
+        return user
+
+    async def bind_identity(self, user: User, *, channel: str, target: str) -> str:
+        """绑定/换绑手机号或邮箱（验证码已由调用方校验）。
+
+        返回归一化后的 target。目标已被其他账户占用时抛 ConflictError。
+        """
+        if channel == "phone":
+            occupant = await self._session.scalar(select(User).where(User.phone == target))
+        elif channel == "email":
+            occupant = await self._session.scalar(select(User).where(User.email == target))
+        else:
+            raise ValidationError(f"不支持的 channel: {channel}")
+
+        if occupant is not None and occupant.id != user.id:
+            raise ConflictError(f"该{'手机号' if channel == 'phone' else '邮箱'}已被其他账户绑定")
+
+        if channel == "phone":
+            user.phone = target
+            user.phone_verified_at = datetime.now(UTC)
+        else:
+            user.email = target
+            user.email_verified_at = datetime.now(UTC)
+        await self._session.flush()
+        return target

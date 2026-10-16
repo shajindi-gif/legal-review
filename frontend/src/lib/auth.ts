@@ -3,14 +3,22 @@ import type { User } from "@/types/api";
 
 const TOKEN_KEY = "lr_token";
 const USER_KEY = "lr_user";
+const HINT_COOKIE = "lr_hint";
 
-/** 在浏览器端把 token 同步写入 cookie，供 proxy.ts（路由层）读取做守卫。 */
-function syncCookie(token: string | null) {
+/**
+ * 同步「登录提示」cookie（非凭证：仅值为 "1"，不含任何 token）。
+ * 供 proxy.ts 路由层守卫读取；真正鉴权始终在后端 JWT。
+ * 旧版曾把 access token 写入 cookie（lr_token），已废弃并在此清除。
+ */
+function syncHintCookie(loggedIn: boolean) {
   if (typeof document === "undefined") return;
-  if (token) {
-    document.cookie = `${TOKEN_KEY}=${token}; path=/; max-age=${60 * 60 * 24 * 7}; samesite=lax`;
+  if (loggedIn) {
+    document.cookie = `${HINT_COOKIE}=1; path=/; max-age=${60 * 60 * 24 * 30}; samesite=lax`;
   } else {
+    document.cookie = `${HINT_COOKIE}=; path=/; max-age=0`;
+    // 兼容清理：旧版本曾把 access token 落 cookie
     document.cookie = `${TOKEN_KEY}=; path=/; max-age=0`;
+    document.cookie = `${TOKEN_KEY}=; path=/api/v1/auth; max-age=0`;
   }
 }
 
@@ -32,7 +40,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (typeof window !== "undefined") {
       window.localStorage.setItem(TOKEN_KEY, token);
       window.localStorage.setItem(USER_KEY, JSON.stringify(user));
-      syncCookie(token);
+      syncHintCookie(true);
     }
     set({ token, user });
   },
@@ -46,7 +54,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (typeof window !== "undefined") {
       window.localStorage.removeItem(TOKEN_KEY);
       window.localStorage.removeItem(USER_KEY);
-      syncCookie(null);
+      syncHintCookie(false);
     }
     set({ token: null, user: null });
   },
@@ -63,7 +71,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         user = null;
       }
     }
-    syncCookie(token);
+    syncHintCookie(Boolean(token && user));
     set({ token, user, hydrated: true });
   },
 }));
