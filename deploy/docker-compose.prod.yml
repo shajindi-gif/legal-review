@@ -115,6 +115,16 @@ services:
       ALIPAY_GATEWAY: ${ALIPAY_GATEWAY:-https://openapi.alipay.com/gateway.do}
       ALIPAY_NOTIFY_PATH: ${ALIPAY_NOTIFY_PATH:-/api/v1/billing/alipay/notify}
       ALIPAY_RETURN_URL: ${ALIPAY_RETURN_URL:-}
+      # 邮件（验证码 / 密码重置；凭证只存 deploy/.env，不进仓库）
+      AUTH_EMAIL_ENABLED: ${AUTH_EMAIL_ENABLED:-false}
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-mock}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-465}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM_ADDR: ${SMTP_FROM_ADDR:-}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-}
+      SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
     volumes:
       - legal_backend_sandbox:/app/_sandbox
       - legal_backend_uploads:/app/uploads
