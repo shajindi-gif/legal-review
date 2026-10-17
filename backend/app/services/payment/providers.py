@@ -19,7 +19,7 @@ import json
 import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime, timedelta, timezone
 from typing import cast
 from urllib.parse import urlencode
 
@@ -29,6 +29,9 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.serialization import load_pem_private_key, load_pem_public_key
 
 from app.core.config import get_settings
+
+# 支付宝要求 timestamp 为东八区时间（GMT+8），固定偏移避免依赖 tzdata
+_ALIPAY_TZ = timezone(timedelta(hours=8))
 
 # ============== 通用数据结构 ==============
 
@@ -365,16 +368,23 @@ class AlipayProvider:
             return f"-----BEGIN PRIVATE KEY-----\n{key}\n-----END PRIVATE KEY-----"
         return f"-----BEGIN PUBLIC KEY-----\n{key}\n-----END PUBLIC KEY-----"
 
-    def _sign(self, params: dict) -> str:
-        """RSA2 签名（SHA256WithRSA）。"""
-        sorted_str = "&".join(
+    @staticmethod
+    def _string_to_sign(params: dict, include_sign_type: bool = True) -> str:
+        """RSA2 待签名字符串：按 key 升序拼接，剔除 sign 与空值。
+
+        支付宝 V2 规则（RSA2）下 sign_type 参与签名；V1 规则剔除。
+        """
+        return "&".join(
             f"{k}={v}" for k, v in sorted(params.items())
-            if v is not None and k != "sign" and k != "sign_type"
+            if v not in (None, "") and k != "sign" and (include_sign_type or k != "sign_type")
         )
+
+    def _sign(self, params: dict) -> str:
+        """RSA2 签名（SHA256WithRSA），sign_type 参与签名。"""
         from cryptography.hazmat.primitives import hashes
         from cryptography.hazmat.primitives.asymmetric import padding
         sig = self._private_key.sign(
-            sorted_str.encode("utf-8"), padding.PKCS1v15(), hashes.SHA256()
+            self._string_to_sign(params).encode("utf-8"), padding.PKCS1v15(), hashes.SHA256()
         )
         return base64.b64encode(sig).decode()
 
@@ -387,7 +397,7 @@ class AlipayProvider:
             "format": "JSON",
             "charset": "utf-8",
             "sign_type": "RSA2",
-            "timestamp": datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S"),
+            "timestamp": datetime.now(_ALIPAY_TZ).strftime("%Y-%m-%d %H:%M:%S"),
             "version": "1.0",
             "notify_url": notify_url,
             "biz_content": json.dumps(biz_content, ensure_ascii=False),
@@ -435,7 +445,7 @@ class AlipayProvider:
             "format": "JSON",
             "charset": "utf-8",
             "sign_type": "RSA2",
-            "timestamp": datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S"),
+            "timestamp": datetime.now(_ALIPAY_TZ).strftime("%Y-%m-%d %H:%M:%S"),
             "version": "1.0",
             "biz_content": json.dumps(biz_content, ensure_ascii=False),
         }
@@ -443,7 +453,11 @@ class AlipayProvider:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.post(self._gateway, data=params)
             resp.raise_for_status()
-            data = resp.json()
+            try:
+                data = resp.json()
+            except ValueError:
+                # 部分错误响应以 GBK 编码返回，httpx json() 不认 charset 头
+                data = json.loads(resp.content.decode("gbk"))
         alipay_resp = data.get("alipay_trade_query_response", {})
         if alipay_resp.get("code") != "10000":
             return None
@@ -457,25 +471,29 @@ class AlipayProvider:
         )
 
     def verify_callback(self, form_data: dict) -> CallbackResult | None:
-        """验签支付宝异步通知。"""
+        """验签支付宝异步通知（V2 规则为主，V1 规则兜底）。
+
+        支付宝会重试多次，验签失败返回 None，业务层必须幂等。
+        """
         params = dict(form_data)
         sign = params.pop("sign", "")
-        params.pop("sign_type", None)
         if not sign:
             return None
-        sorted_str = "&".join(
-            f"{k}={v}" for k, v in sorted(params.items()) if v is not None
-        )
         from cryptography.hazmat.primitives import hashes
         from cryptography.hazmat.primitives.asymmetric import padding
-        try:
-            self._alipay_public_key.verify(
-                base64.b64decode(sign),
-                sorted_str.encode("utf-8"),
-                padding.PKCS1v15(),
-                hashes.SHA256(),
-            )
-        except Exception:
+        for include_sign_type in (True, False):
+            sorted_str = self._string_to_sign(params, include_sign_type=include_sign_type)
+            try:
+                self._alipay_public_key.verify(
+                    base64.b64decode(sign),
+                    sorted_str.encode("utf-8"),
+                    padding.PKCS1v15(),
+                    hashes.SHA256(),
+                )
+                break
+            except Exception:
+                continue
+        else:
             return None
         # 金额：total_amount 是字符串，防止浮点误差
         try:
