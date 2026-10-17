@@ -62,7 +62,7 @@ class SmtpEmailProvider(EmailProvider):
             else self._from_addr
         )
         minutes = max(1, ttl_seconds // 60)
-        subject = f"【法审智能】{_PURPOSE_LABELS.get(purpose, '验证')}验证码"
+        subject = f"【智审 · LegalReview】{_PURPOSE_LABELS.get(purpose, '验证')}验证码"
         body = (
             f"您的验证码是：{code}\n"
             f"验证码 {minutes} 分钟内有效，请勿泄露给他人。\n"
