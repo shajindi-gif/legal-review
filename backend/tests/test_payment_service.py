@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.constants import PaymentChannel, PaymentStatus
 from app.models.user import Order, Payment, UserPlan
 from app.services.payment.providers import CallbackResult
-from app.services.payment.service import PaymentService
+from app.services.payment.service import PaymentService, _channel_order_no
 
 
 def _payment(**kw) -> Payment:
@@ -31,6 +31,12 @@ def _payment(**kw) -> Payment:
     }
     defaults.update(kw)
     return Payment(**defaults)
+
+
+def test_channel_order_no_fits_wechat_limit() -> None:
+    """微信 out_trade_no 上限 32 字符：36 位 UUID 会被 PARAM_ERROR 拒绝。"""
+    assert len(_channel_order_no(uuid4())) == 32
+    assert len(str(uuid4())) == 36  # 说明为何必须转换
 
 
 @pytest.mark.asyncio

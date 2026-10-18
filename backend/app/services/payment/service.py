@@ -37,6 +37,14 @@ logger = get_logger("payment.service")
 PENDING_TIMEOUT_MINUTES = 120  # pending 订单超 2h 未支付自动关闭（SOP 铁律）
 
 
+def _channel_order_no(order_id: UUID) -> str:
+    """渠道侧订单号：微信 out_trade_no 上限 32 字符（36 位 UUID 会 PARAM_ERROR）。
+
+    统一使用 UUID 的 32 位十六进制形式，下单与查单必须保持一致。
+    """
+    return order_id.hex
+
+
 class PaymentService:
     """支付业务服务。"""
 
@@ -122,7 +130,7 @@ class PaymentService:
             self._session.add(order)
             await self._session.flush()
 
-        order_no = str(order.id)
+        order_no = _channel_order_no(order.id)
 
         # 调用渠道下单
         notify_path = (
@@ -307,7 +315,7 @@ class PaymentService:
             return order
 
         channel = order.payment_channel
-        order_no = str(order.id)
+        order_no = _channel_order_no(order.id)
         try:
             if channel == PaymentChannel.WECHAT:
                 result = await self.wx.query_order(order_no)
