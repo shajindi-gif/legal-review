@@ -65,6 +65,19 @@ class PricingItem(BaseModel):
     label: str
 
 
+class RefundRequest(BaseModel):
+    amount_cents: int = Field(..., gt=0, description="退款金额（分），必须显式指定")
+    reason: str = Field(..., min_length=1, max_length=200, description="退款原因")
+
+
+class RefundResponse(BaseModel):
+    order_id: str
+    status: str
+    refund_cents: int
+    channel_refund_no: str
+    full_refund: bool
+
+
 # ============== 路由 ==============
 
 @router.get("/pricing", response_model=list[PricingItem], summary="获取套餐定价")
@@ -136,6 +149,37 @@ async def get_order_status(
         amount_cny=float(order.amount_cny),
         paid_at=order.paid_at.isoformat() if order.paid_at else None,
     )
+
+
+@router.post(
+    "/orders/{order_id}/refund",
+    response_model=RefundResponse,
+    summary="申请退款（订单本人或管理员）",
+)
+async def refund_order(
+    order_id: UUID,
+    req: RefundRequest,
+    current_user: CorePrincipal = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+) -> dict:
+    """对已支付订单发起退款。
+
+    显式授权三要素：order_id（路径）+ amount_cents（请求体）+ reason（请求体）。
+    全额退清后自动回收套餐权益（降回 Free）。
+    """
+    svc = PaymentService(session)
+    order = await svc.get_order(order_id)
+    if order is None:
+        raise NotFoundError(f"订单不存在: {order_id}")
+    is_admin = str(current_user.role) in {"admin", "supervisor"}
+    if order.user_id != current_user.id and not is_admin:
+        raise AppError(code="forbidden", message="无权操作此订单", http_status=403)
+
+    result = await svc.refund_order(
+        order_id, req.amount_cents, req.reason, operator_id=current_user.id
+    )
+    await session.commit()
+    return result
 
 
 @router.post("/wechat/notify", summary="微信支付回调")

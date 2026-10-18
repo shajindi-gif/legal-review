@@ -64,6 +64,16 @@ class CallbackResult:
     out_trade_no: str = ""     # 商户订单号（= order.id.hex），用于确定性还原订单归属
 
 
+@dataclass
+class RefundResult:
+    """退款结果（渠道无关）。"""
+
+    is_success: bool                          # 渠道是否受理退款成功
+    refund_cents: int                         # 本次退款金额（分）
+    channel_refund_no: str = ""               # 渠道退款单号 / 退款请求号（幂等键）
+    raw_response: dict = field(default_factory=dict)
+
+
 # ============== 微信支付 V3（Native / JSAPI / H5）==============
 
 class WechatPayProvider:
@@ -259,6 +269,44 @@ class WechatPayProvider:
                 out_trade_no=out_trade_no,
             )
         return None
+
+    # ---- 退款（全额 / 部分，金额单位：分）----
+    async def refund(
+        self,
+        out_trade_no: str,
+        refund_cents: int,
+        total_cents: int,
+        reason: str,
+    ) -> RefundResult:
+        """按商户订单号发起退款。out_refund_no 为退款请求幂等键（32 位 hex）。
+
+        参考：https://pay.weixin.qq.com/doc/v3/merchant/4012132870
+        """
+        url_path = "/v3/refund/domestics/refunds"
+        out_refund_no = uuid.uuid4().hex
+        body: dict = {
+            "out_trade_no": out_trade_no,
+            "out_refund_no": out_refund_no,
+            "reason": reason or "用户申请退款",
+            "amount": {"refund": refund_cents, "total": total_cents, "currency": "CNY"},
+        }
+        body_str = json.dumps(body, ensure_ascii=False)
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(
+                f"{self.BASE_URL}{url_path}",
+                headers=self._headers("POST", url_path, body_str),
+                content=body_str,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        # 退款单状态：SUCCESS / PROCESSING / ABNORMAL / CLOSED，仅 SUCCESS 视为成功
+        refund_status = data.get("status") or data.get("refund_status") or ""
+        return RefundResult(
+            is_success=refund_status == "SUCCESS",
+            refund_cents=refund_cents,
+            channel_refund_no=data.get("refund_id", "") or out_refund_no,
+            raw_response=data,
+        )
 
     # ---- 静默 OAuth（JSAPI 换 openid）----
     def oauth_authorize_url(self, redirect_uri: str, state: str) -> str:
@@ -480,6 +528,46 @@ class AlipayProvider:
             paid_at=alipay_resp.get("send_pay_date"),
             raw_callback=alipay_resp,
             out_trade_no=alipay_resp.get("out_trade_no", ""),
+        )
+
+    # ---- 退款（全额 / 部分，金额单位：分）----
+    async def refund(self, out_trade_no: str, refund_cents: int, reason: str) -> RefundResult:
+        """按商户订单号发起退款（alipay.trade.refund）。
+
+        out_request_no 标识一次退款请求，同一笔交易多次退款必须唯一（退款幂等键）。
+        参考：https://opendocs.alipay.com/open/270/105898
+        """
+        out_request_no = uuid.uuid4().hex
+        biz_content = {
+            "out_trade_no": out_trade_no,
+            "refund_amount": f"{refund_cents / 100:.2f}",
+            "refund_reason": reason or "用户申请退款",
+            "out_request_no": out_request_no,
+        }
+        params: dict = {
+            "app_id": self._app_id,
+            "method": "alipay.trade.refund",
+            "format": "JSON",
+            "charset": "utf-8",
+            "sign_type": "RSA2",
+            "timestamp": datetime.now(_ALIPAY_TZ).strftime("%Y-%m-%d %H:%M:%S"),
+            "version": "1.0",
+            "biz_content": json.dumps(biz_content, ensure_ascii=False),
+        }
+        params["sign"] = self._sign(params)
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(self._gateway, data=params)
+            resp.raise_for_status()
+            try:
+                data = resp.json()
+            except ValueError:
+                data = json.loads(resp.content.decode("gbk"))
+        alipay_resp = data.get("alipay_trade_refund_response", {})
+        return RefundResult(
+            is_success=alipay_resp.get("code") == "10000",
+            refund_cents=refund_cents,
+            channel_refund_no=out_request_no,
+            raw_response=alipay_resp or data,
         )
 
     def verify_callback(self, form_data: dict) -> CallbackResult | None:

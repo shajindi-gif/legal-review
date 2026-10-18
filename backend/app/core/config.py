@@ -183,6 +183,10 @@ class Settings(BaseSettings):
         "/health,/docs,/redoc,/api/v1/openapi.json,/api/v1/metrics/prometheus"
     )
 
+    # ---- Sentry 错误监控（可选：未配置 SENTRY_DSN 时完全不启用，零行为变化）----
+    sentry_dsn: str = ""
+    sentry_traces_sample_rate: float = 0.0
+
     # ---- CORS ----
     # 逗号分隔字符串(pydantic-settings 对 list 类型要求 JSON 数组,
     # 改用 str 存储 + property 返回 list,兼容 .env 逗号格式)

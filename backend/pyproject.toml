@@ -32,6 +32,7 @@ dependencies = [
     "pyyaml>=6.0.1",
     # 日志与可观测性
     "structlog>=24.1.0",
+    "sentry-sdk>=2.0.0",  # 错误监控（可选启用：配置 SENTRY_DSN 才生效）
     # 文件与 OCR
     "python-magic>=0.4.27",
     "Pillow>=10.0.0",
@@ -110,7 +111,7 @@ strict_equality = true
 # 无类型存根的重型三方库：本地可不安装（OCR 引擎极大、pdf2image 为可选项），
 # 关闭其缺失导入报错，避免 mypy 需要完整依赖才能静态检查
 [[tool.mypy.overrides]]
-module = ["paddleocr", "paddleocr.*", "pdf2image", "sentence_transformers"]
+module = ["paddleocr", "paddleocr.*", "pdf2image", "sentence_transformers", "sentry_sdk", "sentry_sdk.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
