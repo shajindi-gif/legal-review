@@ -123,7 +123,11 @@ class WechatPayProvider:
 
     @staticmethod
     def _ensure_pem(key: str, is_private: bool = True) -> str:
-        """裸 base64 体包成 PEM；已是 PEM 则原样返回。"""
+        """裸 base64 体包成 PEM；已是 PEM 则原样返回。
+
+        兼容 .env 单行存储时的转义换行（先还原为真实换行再判断）。
+        """
+        key = key.replace("\\n", "\n").strip()
         if key.startswith("-----"):
             return key
         if is_private:
@@ -361,7 +365,11 @@ class AlipayProvider:
 
     @staticmethod
     def _ensure_pem(key: str, is_private: bool = True) -> str:
-        """裸 base64 体包成 PEM；已是 PEM 则原样返回。"""
+        """裸 base64 体包成 PEM；已是 PEM 则原样返回。
+
+        兼容 .env 单行存储时的转义换行（先还原为真实换行再判断）。
+        """
+        key = key.replace("\\n", "\n").strip()
         if key.startswith("-----"):
             return key
         if is_private:
