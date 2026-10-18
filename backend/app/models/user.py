@@ -139,9 +139,9 @@ class UserPlan(UUIDPkMixin, TimestampMixin, Base):
     free_trial_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=2)
     # 订阅周期（天）
     period_days: Mapped[int] = mapped_column(Integer, nullable=False, default=30)
-    started_at: Mapped[datetime | None] = mapped_column(nullable=True)
-    expires_at: Mapped[datetime | None] = mapped_column(nullable=True)
-    cancelled_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     user: Mapped[User] = relationship(back_populates="plan")
 
@@ -171,7 +171,7 @@ class Order(UUIDPkMixin, TimestampMixin, Base):
     # 第三方支付流水号（预留）
     payment_channel: Mapped[str | None] = mapped_column(String(32), nullable=True)
     payment_no: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    paid_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     note: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     user: Mapped[User] = relationship(lazy="selectin")
@@ -204,7 +204,7 @@ class Payment(UUIDPkMixin, TimestampMixin, Base):
     )
     channel: Mapped[str | None] = mapped_column(String(32), nullable=True)
     channel_trade_no: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    paid_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     raw_callback: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     note: Mapped[str | None] = mapped_column(String(512), nullable=True)
 

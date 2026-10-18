@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import DateTime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.constants import PaymentChannel, PaymentStatus
@@ -60,6 +61,25 @@ def _wechat_provider() -> MagicMock:
         return_value=CreateOrderResult(channel_trade_no="pp_1", pay_type="native")
     )
     return provider
+
+
+def test_payment_flow_datetime_columns_are_tz_aware() -> None:
+    """paid_at / 订阅时间列必须声明 timezone=True。
+
+    DB 列是 timestamptz，若 ORM 声明成无时区 DateTime，SQLAlchemy 会按
+    TIMESTAMP WITHOUT TIME ZONE 绑定；写入 datetime.now(UTC) 时 flush 会抛
+    "can't subtract offset-naive and offset-aware datetimes"，支付结算直接 500。
+    """
+    table_cols = [
+        Order.__table__.c.paid_at,
+        Payment.__table__.c.paid_at,
+        UserPlan.__table__.c.started_at,
+        UserPlan.__table__.c.expires_at,
+        UserPlan.__table__.c.cancelled_at,
+    ]
+    for col in table_cols:
+        assert isinstance(col.type, DateTime), col
+        assert col.type.timezone is True, col
 
 
 @pytest.mark.asyncio
