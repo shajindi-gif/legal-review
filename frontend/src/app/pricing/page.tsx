@@ -346,6 +346,8 @@ function UpgradeButton({
   const [channel, setChannel] = React.useState<PaymentChannel>("alipay");
   const [order, setOrder] = React.useState<CreateOrderResponse | null>(null);
   const [orderStatus, setOrderStatus] = React.useState<OrderStatusResponse | null>(null);
+  // 复用到的旧订单其实已支付（渠道侧已成功、回调尚未落库）：直接进入开通态
+  const [alreadyPaid, setAlreadyPaid] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   // 微信内 JSAPI：OAuth 回调回跳后 URL 上带 openid
   const [openid] = React.useState<string>(() =>
@@ -417,6 +419,14 @@ function UpgradeButton({
         channel,
       });
 
+      // 后端复用到的旧订单其实已支付（渠道侧已成功、回调尚未落库）：
+      // 后端已不再重复下单，此处直接进入「开通中」态并轮询，避免让用户重复扫码。
+      if (res.status === "succeeded") {
+        setAlreadyPaid(true);
+        startPolling(res.order_id);
+        return;
+      }
+
       if (res.pay_type === "native") {
         startPolling(res.order_id);
       } else if (res.pay_type === "jsapi" && res.jsapi_params?.package) {
@@ -432,6 +442,20 @@ function UpgradeButton({
       setLoading(false);
     }
   };
+
+  if (alreadyPaid) {
+    return (
+      <div className="w-full space-y-4">
+        <div className="flex items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-brand-600" />
+        </div>
+        <p className="text-center text-sm text-muted-foreground">
+          该订单已支付，正在为你开通套餐...
+        </p>
+        <OrderStatusHint status={orderStatus} />
+      </div>
+    );
+  }
 
   if (order) {
     if (order.pay_type === "native") {

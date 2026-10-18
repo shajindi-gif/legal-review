@@ -134,7 +134,23 @@ class PaymentService:
             )
         )
         if existing is not None:
-            # 复用旧订单，重新下单（二维码 / 跳转 URL 会过期）
+            # 复用旧订单，重新下单（二维码 / 跳转 URL 会过期）。
+            # 先补偿查单：若该单其实已在渠道侧支付成功（回调 / 轮询尚未落库），
+            # 继续用已支付的 out_trade_no 下单会被渠道拒绝（微信 400 ORDERPAID →
+            # 前端 500），故命中已支付时直接返回已结算，不再下单。
+            existing = await self.query_and_sync_order(existing)
+            if existing.status != PaymentStatus.PENDING:
+                return {
+                    "order_id": str(existing.id),
+                    "order_no": _channel_order_no(existing.id),
+                    "pay_type": pay_type,
+                    "qr_code": "",
+                    "pay_url": "",
+                    "jsapi_params": {},
+                    "amount_cents": amount_cents,
+                    "channel": channel,
+                    "status": str(existing.status),
+                }
             order = existing
         else:
             order = Order(
@@ -196,6 +212,7 @@ class PaymentService:
             "jsapi_params": result.jsapi_params,
             "amount_cents": amount_cents,
             "channel": channel,
+            "status": str(order.status),
         }
 
     # ---- 回调处理（微信 / 支付宝通用）----

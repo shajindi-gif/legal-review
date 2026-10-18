@@ -363,6 +363,8 @@ export interface CreateOrderResponse {
   jsapi_params: Record<string, string>;
   amount_cents: number;
   channel: PaymentChannel;
+  // 复用命中已支付单时为 "succeeded"，前端据此进入「开通中」态而非重复扫码
+  status?: PaymentStatus;
 }
 
 export interface OrderStatusResponse {
