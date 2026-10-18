@@ -513,6 +513,135 @@ class PaymentService:
                 expires_at=expires_at.isoformat(),
             )
 
+    # ---- 退款（显式授权订单 + 显式金额，全额退款回收权益）----
+    async def refund_order(
+        self,
+        order_id: UUID,
+        amount_cents: int,
+        reason: str,
+        operator_id: UUID | None = None,
+    ) -> dict:
+        """对已支付订单发起退款（支持部分退款），全额退清后回收套餐权益。
+
+        安全约束（工程铁律）：
+        - 调用方必须显式指定 order_id + amount_cents，不接受任何隐式金额推断
+        - 仅已支付（succeeded）订单可退款，退款金额不得超过「实付 - 历史已退」
+        - 退款流水一笔一条落库（status=refunded），支撑部分退款与对账追溯
+        """
+        if amount_cents <= 0:
+            raise ValidationError("退款金额必须大于 0")
+        order = await self._session.get(Order, order_id)
+        if order is None:
+            raise ValidationError(f"订单不存在: {order_id}")
+        if order.status != PaymentStatus.SUCCEEDED:
+            raise ValidationError(f"仅已支付订单可退款（当前状态: {order.status}）")
+
+        paid_cents = int(round(float(order.amount_cny) * 100))
+        rows = await self._session.execute(
+            select(Payment).where(
+                Payment.order_id == order.id,
+                Payment.status == PaymentStatus.REFUNDED,
+            )
+        )
+        refunded_cents = sum(
+            int(round(float(p.amount_cny) * 100)) for p in rows.scalars().all()
+        )
+        if amount_cents + refunded_cents > paid_cents:
+            raise ValidationError(
+                f"退款金额超出可退余额：可退 {paid_cents - refunded_cents} 分，"
+                f"请求 {amount_cents} 分"
+            )
+
+        order_no = _channel_order_no(order.id)
+        channel = order.payment_channel or ""
+        if channel == PaymentChannel.WECHAT:
+            result = await self.wx.refund(order_no, amount_cents, paid_cents, reason)
+        elif channel == PaymentChannel.ALIPAY:
+            result = await self.ali.refund(order_no, amount_cents, reason)
+        else:
+            raise ValidationError(f"未知支付渠道: {channel}")
+
+        if not result.is_success:
+            logger.error(
+                "payment_refund_failed",
+                order_id=str(order.id),
+                channel=channel,
+                raw=result.raw_response,
+            )
+            raise AppError(code="refund_failed", message="渠道退款失败，请稍后重试")
+
+        # 退款流水：一笔退款一条（部分退款可多条累加），channel_refund_no 为渠道退款单号
+        self._session.add(
+            Payment(
+                id=uuid.uuid4(),
+                order_id=order.id,
+                user_id=order.user_id,
+                amount_cny=amount_cents / 100,
+                status=PaymentStatus.REFUNDED,
+                channel=channel,
+                channel_trade_no=result.channel_refund_no,
+                note=reason[:500],
+                raw_callback=result.raw_response,
+            )
+        )
+
+        is_full_refund = refunded_cents + amount_cents >= paid_cents
+        if is_full_refund:
+            order.status = PaymentStatus.REFUNDED
+            await self._revoke_plan(order.user_id)
+        await self._session.flush()
+
+        logger.info(
+            "payment_refunded",
+            order_id=str(order.id),
+            user_id=str(order.user_id),
+            amount_cents=amount_cents,
+            full_refund=is_full_refund,
+            operator=str(operator_id) if operator_id else "",
+        )
+
+        # 商业化埋点：order_refunded（best-effort，任何异常绝不影响退款主流程）
+        try:
+            self._session.add(
+                AnalyticsEvent(
+                    user_id=order.user_id,
+                    event="order_refunded",
+                    properties={
+                        "order_id": str(order.id),
+                        "amount_cents": amount_cents,
+                        "full_refund": is_full_refund,
+                        "reason": reason[:100],
+                    },
+                )
+            )
+        except Exception as e:
+            logger.warning("analytics_order_refunded_failed", error=str(e))
+
+        return {
+            "order_id": str(order.id),
+            "status": str(order.status),
+            "refund_cents": amount_cents,
+            "channel_refund_no": result.channel_refund_no,
+            "full_refund": is_full_refund,
+        }
+
+    # ---- 权益回收（全额退款后）----
+    async def _revoke_plan(self, user_id: UUID) -> None:
+        """全额退款后回收套餐权益：降回 Free 并置 cancelled。
+
+        配额判定只看 tier（见 QuotaService.is_unlimited），必须降级 tier 才能真正回收权益。
+        """
+        plan = await self._session.scalar(
+            select(UserPlan).where(UserPlan.user_id == user_id)
+        )
+        if plan is None:
+            return
+        plan.tier = PlanTier.FREE
+        plan.status = SubscriptionStatus.CANCELLED
+        plan.cancelled_at = datetime.now(UTC)
+        plan.quota_daily = FREE_TRIAL_LIMIT
+        logger.info("plan_revoked_by_refund", user_id=str(user_id))
+
     # ---- 查询 ----
     async def get_order(self, order_id: UUID) -> Order | None:
         return await self._session.get(Order, order_id)

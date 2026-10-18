@@ -32,6 +32,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     """应用工厂。"""
     settings = get_settings()
+
+    # Sentry 错误监控（可选）：仅当配置 SENTRY_DSN 时启用，未配置零行为变化
+    if settings.sentry_dsn:
+        import sentry_sdk
+
+        sentry_sdk.init(
+            dsn=settings.sentry_dsn,
+            traces_sample_rate=settings.sentry_traces_sample_rate,
+            environment=settings.environment,
+        )
+
     app = FastAPI(
         title=settings.app_name,
         version=settings.app_version,

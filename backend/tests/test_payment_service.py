@@ -13,9 +13,15 @@ import pytest
 from sqlalchemy import DateTime
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.constants import PaymentChannel, PaymentStatus
+from app.core.constants import (
+    PaymentChannel,
+    PaymentStatus,
+    PlanTier,
+    SubscriptionStatus,
+)
+from app.core.errors import ValidationError
 from app.models.user import Order, Payment, UserPlan
-from app.services.payment.providers import CallbackResult, CreateOrderResult
+from app.services.payment.providers import CallbackResult, CreateOrderResult, RefundResult
 from app.services.payment.service import PaymentService, _channel_order_no
 
 
@@ -444,3 +450,128 @@ async def test_create_order_reuse_hits_already_paid_returns_settled_without_reor
     assert result["pay_url"] == ""
     provider.create_order.assert_not_awaited()  # 未再调渠道下单
     assert order.status == PaymentStatus.SUCCEEDED
+
+
+# ============== 退款（显式订单 + 显式金额 + 权益回收）==============
+
+def _refund_provider(refund_cents: int = 29900) -> MagicMock:
+    provider = _wechat_provider()
+    provider.refund = AsyncMock(
+        return_value=RefundResult(
+            is_success=True,
+            refund_cents=refund_cents,
+            channel_refund_no="rf_1",
+            raw_response={"status": "SUCCESS"},
+        )
+    )
+    return provider
+
+
+def _refund_rows(payments: list[Payment]) -> MagicMock:
+    rows = MagicMock()
+    rows.scalars.return_value.all.return_value = payments
+    return rows
+
+
+@pytest.mark.asyncio
+async def test_refund_full_marks_order_refunded_and_revokes_plan() -> None:
+    """全额退款：订单置 refunded，套餐权益回收（降回 Free + cancelled）。"""
+    session = AsyncMock(spec=AsyncSession)
+    order = _order(status=PaymentStatus.SUCCEEDED, amount_cny=299.0)
+    plan = UserPlan(
+        id=uuid4(),
+        user_id=order.user_id,
+        tier=PlanTier.PRO,
+        status=SubscriptionStatus.ACTIVE,
+        quota_daily=-1,
+    )
+    session.get = AsyncMock(return_value=order)
+    session.execute = AsyncMock(return_value=_refund_rows([]))  # 无历史退款
+    session.scalar = AsyncMock(return_value=plan)  # 权益回收查询
+    session.add = MagicMock()
+    session.flush = AsyncMock()
+
+    provider = _refund_provider()
+    with patch.object(PaymentService, "wx", new_callable=PropertyMock) as mock_wx:
+        mock_wx.return_value = provider
+        result = await PaymentService(session).refund_order(
+            order.id, 29900, "用户申请退款", operator_id=uuid4()
+        )
+
+    assert result["full_refund"] is True
+    assert result["refund_cents"] == 29900
+    assert order.status == PaymentStatus.REFUNDED
+    assert plan.tier == PlanTier.FREE  # 权益已回收
+    assert plan.status == SubscriptionStatus.CANCELLED
+    assert plan.cancelled_at is not None
+    added = [c.args[0] for c in session.add.call_args_list if isinstance(c.args[0], Payment)]
+    assert len(added) == 1
+    assert added[0].status == PaymentStatus.REFUNDED
+    assert added[0].channel_trade_no == "rf_1"  # 渠道退款单号留痕
+    provider.refund.assert_awaited_once_with(order.id.hex, 29900, 29900, "用户申请退款")
+
+
+@pytest.mark.asyncio
+async def test_refund_partial_keeps_plan_until_fully_refunded() -> None:
+    """部分退款：订单保持已支付，权益不回收，仅落退款流水。"""
+    session = AsyncMock(spec=AsyncSession)
+    order = _order(status=PaymentStatus.SUCCEEDED, amount_cny=299.0)
+    session.get = AsyncMock(return_value=order)
+    session.execute = AsyncMock(return_value=_refund_rows([]))
+    session.add = MagicMock()
+    session.flush = AsyncMock()
+
+    provider = _refund_provider(refund_cents=5000)
+    with patch.object(PaymentService, "wx", new_callable=PropertyMock) as mock_wx:
+        mock_wx.return_value = provider
+        result = await PaymentService(session).refund_order(order.id, 5000, "部分退款")
+
+    assert result["full_refund"] is False
+    assert order.status == PaymentStatus.SUCCEEDED  # 未退清，订单不置 refunded
+    session.scalar.assert_not_called()  # 未触发权益回收
+
+
+@pytest.mark.asyncio
+async def test_refund_rejects_non_succeeded_order() -> None:
+    """非已支付订单（pending/closed/refunded）一律拒绝退款。"""
+    session = AsyncMock(spec=AsyncSession)
+    order = _order(status=PaymentStatus.PENDING)
+    session.get = AsyncMock(return_value=order)
+
+    with pytest.raises(ValidationError):
+        await PaymentService(session).refund_order(order.id, 9900, "退款")
+    session.execute.assert_not_called()  # 未查询退款流水，未调渠道
+
+
+@pytest.mark.asyncio
+async def test_refund_rejects_amount_exceeding_paid() -> None:
+    """退款金额超出实付 → 拒绝（显式金额校验，不做隐式截断）。"""
+    session = AsyncMock(spec=AsyncSession)
+    order = _order(status=PaymentStatus.SUCCEEDED, amount_cny=99.0)
+    session.get = AsyncMock(return_value=order)
+    session.execute = AsyncMock(return_value=_refund_rows([]))
+
+    with pytest.raises(ValidationError):
+        await PaymentService(session).refund_order(order.id, 10000, "退款")
+
+
+@pytest.mark.asyncio
+async def test_refund_rejects_second_full_refund() -> None:
+    """已全额退过的订单再次全额退款 → 拒绝（可退余额为 0）。"""
+    session = AsyncMock(spec=AsyncSession)
+    order = _order(status=PaymentStatus.SUCCEEDED, amount_cny=99.0)
+    prior_refund = _payment(
+        order_id=order.id,
+        user_id=order.user_id,
+        amount_cny=99.0,
+        status=PaymentStatus.REFUNDED,
+    )
+    session.get = AsyncMock(return_value=order)
+    session.execute = AsyncMock(return_value=_refund_rows([prior_refund]))
+
+    provider = _refund_provider()
+    with patch.object(PaymentService, "wx", new_callable=PropertyMock) as mock_wx:
+        mock_wx.return_value = provider
+        with pytest.raises(ValidationError):
+            await PaymentService(session).refund_order(order.id, 9900, "重复退款")
+    provider.refund.assert_not_awaited()  # 未调渠道发起二次退款
