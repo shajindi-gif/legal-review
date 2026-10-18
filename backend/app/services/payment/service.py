@@ -234,11 +234,13 @@ class PaymentService:
         if not verify_result.is_success:
             return {"status": "success", "message": "非成功状态，忽略"}
 
-        # ---- 幂等优先：按渠道交易号精确查找（不论状态）----
+        # ---- 幂等优先：按渠道交易号精确查找「已结算」流水 ----
         # 首次成功会把微信 transaction_id / 支付宝 trade_no 回填到
         # payment.channel_trade_no；重复通知据此命中已结算订单，避免被误判为
         # "未找到订单"返回 FAIL（否则微信/支付宝会无限重试）。
         payment: Payment | None = None
+        # out_trade_no 是否已确定订单归属；锁定后不再做模糊匹配。
+        attribution_locked = False
         if verify_result.channel_trade_no:
             payment = await self._session.scalar(
                 select(Payment).where(
@@ -254,13 +256,16 @@ class PaymentService:
                 )
                 return {"status": "success", "message": "已处理（重复通知）"}
 
-        # ---- 未按交易号命中 → 按 out_trade_no 确定性还原订单归属 ----
+        # ---- 按 out_trade_no 确定性还原订单归属（权威依据）----
         # out_trade_no 即下单时写入的 order.id.hex，渠道原样回传，可唯一还原订单。
         # 此前用「渠道 + 金额 + 30 分钟内」任取一条 pending 流水，同一窗口出现多笔
         # 同渠道同金额订单时会串号（实测把一笔微信流水结算到了别的订单并重复发放权益）。
-        if payment is None and verify_result.out_trade_no:
+        # 注意：① 命中的「未结算」流水不可作为归属依据——历史脏数据里可能出现流水
+        # 挂在别的订单上（实测：一笔微信流水挂在支付宝订单下）；故以 out_trade_no 为准。
+        if verify_result.out_trade_no:
             order = await self._resolve_order_by_out_trade_no(verify_result.out_trade_no)
             if order is not None:
+                attribution_locked = True
                 if order.status == PaymentStatus.SUCCEEDED:
                     logger.info("payment_duplicate_order", order_id=str(order.id))
                     return {"status": "success", "message": "已处理（订单已结算）"}
@@ -274,7 +279,7 @@ class PaymentService:
                 )
 
         # ---- 兜底：仅唯一候选时才按金额 + 时间匹配（兼容渠道未回传 out_trade_no）----
-        if payment is None:
+        if payment is None and not attribution_locked:
             paid_at_min = datetime.now(UTC) - timedelta(minutes=30)
             rows = await self._session.execute(
                 select(Payment).where(
