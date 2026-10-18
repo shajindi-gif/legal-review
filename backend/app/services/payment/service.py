@@ -254,29 +254,72 @@ class PaymentService:
                 )
                 return {"status": "success", "message": "已处理（重复通知）"}
 
-        # ---- 未按交易号命中 → 回退：pending 订单按金额 + 时间模糊匹配 ----
-        # 兼容首次回调：下单时渠道侧交易号尚未回填（如支付宝 page/wap 下单返回空）。
+        # ---- 未按交易号命中 → 按 out_trade_no 确定性还原订单归属 ----
+        # out_trade_no 即下单时写入的 order.id.hex，渠道原样回传，可唯一还原订单。
+        # 此前用「渠道 + 金额 + 30 分钟内」任取一条 pending 流水，同一窗口出现多笔
+        # 同渠道同金额订单时会串号（实测把一笔微信流水结算到了别的订单并重复发放权益）。
+        if payment is None and verify_result.out_trade_no:
+            order = await self._resolve_order_by_out_trade_no(verify_result.out_trade_no)
+            if order is not None:
+                if order.status == PaymentStatus.SUCCEEDED:
+                    logger.info("payment_duplicate_order", order_id=str(order.id))
+                    return {"status": "success", "message": "已处理（订单已结算）"}
+                payment = await self._session.scalar(
+                    select(Payment)
+                    .where(
+                        Payment.order_id == order.id,
+                        Payment.channel == channel,
+                    )
+                    .order_by(Payment.created_at.desc())
+                )
+
+        # ---- 兜底：仅唯一候选时才按金额 + 时间匹配（兼容渠道未回传 out_trade_no）----
         if payment is None:
             paid_at_min = datetime.now(UTC) - timedelta(minutes=30)
-            stmt = select(Payment).where(
-                Payment.channel == channel,
-                Payment.status == PaymentStatus.PENDING,
-                Payment.amount_cny == verify_result.amount_cents / 100,
-                Payment.created_at >= paid_at_min,
+            rows = await self._session.execute(
+                select(Payment).where(
+                    Payment.channel == channel,
+                    Payment.status == PaymentStatus.PENDING,
+                    Payment.amount_cny == verify_result.amount_cents / 100,
+                    Payment.created_at >= paid_at_min,
+                )
             )
-            payment = await self._session.scalar(stmt)
+            candidates = list(rows.scalars().all())
+            if len(candidates) == 1:
+                payment = candidates[0]
+            elif len(candidates) > 1:
+                logger.error(
+                    "payment_ambiguous_match",
+                    channel=channel,
+                    amount=verify_result.amount_cents,
+                    candidates=len(candidates),
+                )
+                return {"status": "fail", "message": "订单归属不唯一，拒绝结算"}
 
         if payment is None:
             logger.error(
                 "payment_order_not_found",
                 channel=channel,
                 amount=verify_result.amount_cents,
+                out_trade_no=verify_result.out_trade_no,
             )
             return {"status": "fail", "message": "未找到对应订单"}
 
         # 并发防御：极端并发下已被另一请求处理
         if payment.status == PaymentStatus.SUCCEEDED:
             return {"status": "success", "message": "已处理"}
+
+        # 金额核对：渠道成交金额必须与订单一致，防止结算到金额不符的订单
+        expected_cents = int(round(float(payment.amount_cny) * 100))
+        if verify_result.amount_cents and verify_result.amount_cents != expected_cents:
+            logger.error(
+                "payment_amount_mismatch",
+                channel=channel,
+                order_id=str(payment.order_id),
+                expected_cents=expected_cents,
+                got_cents=verify_result.amount_cents,
+            )
+            return {"status": "fail", "message": "支付金额与订单不一致"}
 
         # 更新 payment + order
         payment.status = PaymentStatus.SUCCEEDED
@@ -323,6 +366,19 @@ class PaymentService:
             logger.warning("analytics_order_paid_failed", error=str(e))
 
         return {"status": "success", "message": "OK"}
+
+    async def _resolve_order_by_out_trade_no(self, out_trade_no: str) -> Order | None:
+        """由渠道商户订单号确定性还原订单归属。
+
+        out_trade_no 在下单时写入为 order.id.hex（见 _channel_order_no），渠道原样回传，
+        故可唯一还原订单，替代此前的「渠道 + 金额 + 时间」模糊匹配。
+        """
+        try:
+            order_id = UUID(hex=out_trade_no)
+        except (ValueError, AttributeError, TypeError):
+            logger.error("payment_out_trade_no_unparsable", out_trade_no=out_trade_no)
+            return None
+        return await self._session.get(Order, order_id)
 
     # ---- 主动查单补偿（回调可能不来）+ 超时关单 ----
     async def query_and_sync_order(self, order: Order) -> Order:

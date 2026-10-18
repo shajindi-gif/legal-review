@@ -190,7 +190,7 @@ async def test_handle_callback_duplicate_returns_success_without_reactivating() 
 
 @pytest.mark.asyncio
 async def test_handle_callback_first_time_activates_plan() -> None:
-    """首次回调（微信 prepay_id 与 transaction_id 不同，走金额回退）→ 开通套餐。"""
+    """首次回调（微信 prepay_id 与 transaction_id 不同）→ out_trade_no 确定性反查并开通套餐。"""
     session = AsyncMock(spec=AsyncSession)
     order_id = uuid4()
     user_id = uuid4()
@@ -205,7 +205,7 @@ async def test_handle_callback_first_time_activates_plan() -> None:
         created_at=datetime.now(UTC),
     )
 
-    # scalar 调用顺序：1) 精确交易号匹配→None 2) 金额回退→payment 3) 计划查询→None
+    # scalar 调用顺序：1) 精确交易号匹配→None 2) 订单归属流水→payment 3) 套餐查询→None
     session.scalar = AsyncMock(side_effect=[None, payment, None])
     session.get = AsyncMock(return_value=order)
     added: list = []
@@ -225,6 +225,7 @@ async def test_handle_callback_first_time_activates_plan() -> None:
             amount_cents=9900,
             paid_at="2026-01-01T00:00:00+08:00",
             raw_callback={},
+            out_trade_no=order_id.hex,
         ),
         {},
     )
@@ -234,3 +235,121 @@ async def test_handle_callback_first_time_activates_plan() -> None:
     assert order.status == PaymentStatus.SUCCEEDED
     plans = [o for o in added if isinstance(o, UserPlan)]
     assert len(plans) == 1
+
+
+@pytest.mark.asyncio
+async def test_mark_paid_out_trade_no_is_deterministic_across_same_amount_orders() -> None:
+    """同渠道同金额的两笔 pending 单：按 out_trade_no 精确归属，绝不串到另一笔。
+
+    回归「channel + 金额 + 30 分钟内」任取一条的模糊匹配：实测曾把一笔微信流水
+    结算到别的订单并重复发放权益。
+    """
+    session = AsyncMock(spec=AsyncSession)
+    order_a, order_b = uuid4(), uuid4()
+    pay_a = _payment(order_id=order_a, channel_trade_no="prepay_a")
+    pay_b = _payment(order_id=order_b, channel_trade_no="prepay_b")
+    order = Order(
+        id=order_a,
+        user_id=pay_a.user_id,
+        plan_tier="pro",
+        amount_cny=99.0,
+        period_days=30,
+        status=PaymentStatus.PENDING,
+        created_at=datetime.now(UTC),
+    )
+    # scalar：1) 交易号精确→None 2) (order_a, channel) 归属流水→pay_a 3) 套餐→None
+    session.scalar = AsyncMock(side_effect=[None, pay_a, None])
+    session.get = AsyncMock(return_value=order)
+    session.execute = AsyncMock()
+    session.add = MagicMock()
+    session.flush = AsyncMock()
+
+    result = await PaymentService(session).handle_callback(
+        PaymentChannel.WECHAT,
+        CallbackResult(
+            is_success=True,
+            channel_trade_no="txn_a",
+            amount_cents=9900,
+            paid_at=None,
+            raw_callback={},
+            out_trade_no=order_a.hex,
+        ),
+        {},
+    )
+
+    assert result["status"] == "success"
+    assert pay_a.status == PaymentStatus.SUCCEEDED
+    assert pay_b.status == PaymentStatus.PENDING  # 未串到另一笔同金额订单
+    assert pay_a.channel_trade_no == "txn_a"
+    session.execute.assert_not_called()  # 未走模糊回退
+
+
+@pytest.mark.asyncio
+async def test_mark_paid_ambiguous_fallback_refuses_when_multiple_candidates() -> None:
+    """渠道未回传 out_trade_no 且同渠道同金额存在多笔 pending → 一律拒绝，不任取一条。"""
+    session = AsyncMock(spec=AsyncSession)
+    payment1 = _payment(channel_trade_no="prepay_1")
+    payment2 = _payment(channel_trade_no="prepay_2")
+    rows = MagicMock()
+    rows.scalars.return_value.all.return_value = [payment1, payment2]
+    session.scalar = AsyncMock(return_value=None)  # 交易号精确匹配未命中
+    session.execute = AsyncMock(return_value=rows)
+    session.add = MagicMock()
+    session.flush = AsyncMock()
+
+    result = await PaymentService(session).handle_callback(
+        PaymentChannel.WECHAT,
+        CallbackResult(
+            is_success=True,
+            channel_trade_no="txn_x",
+            amount_cents=9900,
+            paid_at=None,
+            raw_callback={},
+        ),
+        {},
+    )
+
+    assert result["status"] == "fail"
+    assert payment1.status == PaymentStatus.PENDING
+    assert payment2.status == PaymentStatus.PENDING
+    session.add.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_mark_paid_fallback_settles_when_single_candidate() -> None:
+    """渠道未回传 out_trade_no 时，唯一候选仍可结算（兼容历史/异常情形）。"""
+    session = AsyncMock(spec=AsyncSession)
+    order_id = uuid4()
+    payment = _payment(order_id=order_id, channel_trade_no="prepay_1")
+    order = Order(
+        id=order_id,
+        user_id=payment.user_id,
+        plan_tier="pro",
+        amount_cny=99.0,
+        period_days=30,
+        status=PaymentStatus.PENDING,
+        created_at=datetime.now(UTC),
+    )
+    rows = MagicMock()
+    rows.scalars.return_value.all.return_value = [payment]
+    # scalar：1) 交易号精确→None 2) 套餐→None
+    session.scalar = AsyncMock(side_effect=[None, None])
+    session.execute = AsyncMock(return_value=rows)
+    session.get = AsyncMock(return_value=order)
+    session.add = MagicMock()
+    session.flush = AsyncMock()
+
+    result = await PaymentService(session).handle_callback(
+        PaymentChannel.WECHAT,
+        CallbackResult(
+            is_success=True,
+            channel_trade_no="txn_1",
+            amount_cents=9900,
+            paid_at=None,
+            raw_callback={},
+        ),
+        {},
+    )
+
+    assert result["status"] == "success"
+    assert payment.status == PaymentStatus.SUCCEEDED
