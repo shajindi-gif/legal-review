@@ -353,3 +353,49 @@ async def test_mark_paid_fallback_settles_when_single_candidate() -> None:
 
     assert result["status"] == "success"
     assert payment.status == PaymentStatus.SUCCEEDED
+
+
+@pytest.mark.asyncio
+async def test_mark_paid_out_trade_no_overrides_stale_trade_no_match() -> None:
+    """交易号命中的流水挂在别的订单上（历史脏数据）时，以 out_trade_no 归属为准。
+
+    回归实测：一笔微信流水（交易号已回填）被错挂在支付宝订单下，先按交易号命中
+    即会把款项继续结算到错误订单。归属必须以渠道回传的 out_trade_no 为准。
+    """
+    session = AsyncMock(spec=AsyncSession)
+    wrong_order, right_order = uuid4(), uuid4()
+    stale = _payment(order_id=wrong_order, channel_trade_no="txn_x", status=PaymentStatus.CLOSED)
+    correct = _payment(order_id=right_order, channel_trade_no="prepay_r")
+    order = Order(
+        id=right_order,
+        user_id=correct.user_id,
+        plan_tier="pro",
+        amount_cny=99.0,
+        period_days=30,
+        status=PaymentStatus.PENDING,
+        created_at=datetime.now(UTC),
+    )
+    # scalar：1) 交易号命中 stale（未结算）2) 归属订单流水→correct 3) 套餐→None
+    session.scalar = AsyncMock(side_effect=[stale, correct, None])
+    session.get = AsyncMock(return_value=order)
+    session.execute = AsyncMock()
+    session.add = MagicMock()
+    session.flush = AsyncMock()
+
+    result = await PaymentService(session).handle_callback(
+        PaymentChannel.WECHAT,
+        CallbackResult(
+            is_success=True,
+            channel_trade_no="txn_x",
+            amount_cents=9900,
+            paid_at=None,
+            raw_callback={},
+            out_trade_no=right_order.hex,
+        ),
+        {},
+    )
+
+    assert result["status"] == "success"
+    assert correct.status == PaymentStatus.SUCCEEDED  # 归属正确的订单被结算
+    assert stale.status == PaymentStatus.CLOSED  # 脏数据未被误结算
+    session.execute.assert_not_called()  # 归属已锁定，不再模糊匹配
