@@ -61,6 +61,7 @@ class CallbackResult:
     amount_cents: int          # 金额（分）
     paid_at: str | None        # 支付时间（ISO 8601）
     raw_callback: dict         # 原始响应（存 DB raw_callback）
+    out_trade_no: str = ""     # 商户订单号（= order.id.hex），用于确定性还原订单归属
 
 
 # ============== 微信支付 V3（Native / JSAPI / H5）==============
@@ -255,6 +256,7 @@ class WechatPayProvider:
                 amount_cents=data.get("amount", {}).get("total", 0),
                 paid_at=data.get("success_time"),
                 raw_callback=data,
+                out_trade_no=out_trade_no,
             )
         return None
 
@@ -330,6 +332,7 @@ class WechatPayProvider:
             amount_cents=decrypted.get("amount", {}).get("total", 0),
             paid_at=decrypted.get("success_time"),
             raw_callback=decrypted,
+            out_trade_no=decrypted.get("out_trade_no", ""),
         )
 
 
@@ -476,6 +479,7 @@ class AlipayProvider:
             amount_cents=int(float(alipay_resp.get("total_amount", "0")) * 100),
             paid_at=alipay_resp.get("send_pay_date"),
             raw_callback=alipay_resp,
+            out_trade_no=alipay_resp.get("out_trade_no", ""),
         )
 
     def verify_callback(self, form_data: dict) -> CallbackResult | None:
@@ -515,4 +519,5 @@ class AlipayProvider:
             amount_cents=amount_cents,
             paid_at=form_data.get("gmt_payment"),
             raw_callback=form_data,
+            out_trade_no=form_data.get("out_trade_no", ""),
         )
