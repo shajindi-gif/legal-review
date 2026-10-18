@@ -399,3 +399,48 @@ async def test_mark_paid_out_trade_no_overrides_stale_trade_no_match() -> None:
     assert correct.status == PaymentStatus.SUCCEEDED  # 归属正确的订单被结算
     assert stale.status == PaymentStatus.CLOSED  # 脏数据未被误结算
     session.execute.assert_not_called()  # 归属已锁定，不再模糊匹配
+
+
+@pytest.mark.asyncio
+async def test_create_order_reuse_hits_already_paid_returns_settled_without_reordering() -> None:
+    """复用的 pending 单其实已在渠道侧支付成功 → 直接返回已结算，不再重复下单。
+
+    回归：复用的 out_trade_no 已在渠道完成支付，继续用同号下单会被渠道拒绝
+    （微信 400 ORDERPAID → 前端 500）。此时应先补偿查单、命中已支付即返回。
+    """
+    session = AsyncMock(spec=AsyncSession)
+    order = _order(amount_cny=299.0, period_days=30)
+    payment = _payment(order_id=order.id, user_id=order.user_id, amount_cny=299.0)
+    empty_rows = MagicMock()
+    empty_rows.scalars.return_value.all.return_value = []
+    session.execute = AsyncMock(return_value=empty_rows)
+    # scalar：1) 复用单命中 2) 交易号精确→None 3) 归属订单流水→payment 4) 套餐→None
+    session.scalar = AsyncMock(side_effect=[order, None, payment, None])
+    session.get = AsyncMock(return_value=order)
+    session.refresh = AsyncMock()
+    session.add = MagicMock()
+    session.flush = AsyncMock()
+
+    provider = _wechat_provider()
+    provider.query_order = AsyncMock(
+        return_value=CallbackResult(
+            is_success=True,
+            channel_trade_no="txn_r",
+            amount_cents=29900,
+            paid_at="2026-10-18T20:30:11+08:00",
+            raw_callback={},
+            out_trade_no=order.id.hex,
+        )
+    )
+
+    with patch.object(PaymentService, "wx", new_callable=PropertyMock) as mock_wx:
+        mock_wx.return_value = provider
+        result = await PaymentService(session).create_order(
+            order.user_id, "pro", 30, "wechat", pay_type="native"
+        )
+
+    assert result["status"] == "succeeded"
+    assert result["qr_code"] == ""
+    assert result["pay_url"] == ""
+    provider.create_order.assert_not_awaited()  # 未再调渠道下单
+    assert order.status == PaymentStatus.SUCCEEDED

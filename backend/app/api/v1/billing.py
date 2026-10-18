@@ -45,6 +45,8 @@ class CreateOrderResponse(BaseModel):
     jsapi_params: dict = Field(default_factory=dict)
     amount_cents: int
     channel: str
+    # 订单状态：复用命中已支付单时返回 succeeded（前端据此进入「开通中」态）
+    status: str = "pending"
 
 
 class OrderStatusResponse(BaseModel):
