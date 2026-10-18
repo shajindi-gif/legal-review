@@ -106,7 +106,7 @@ class WechatPayProvider:
         self._private_key = cast(
             rsa.RSAPrivateKey,
             load_pem_private_key(
-                self._private_key_pem.encode("utf-8"), password=None,
+                self._ensure_pem(self._private_key_pem).encode("utf-8"), password=None,
             ),
         )
         # 回调验签公钥（微信支付公钥，非商户 apiclient 证书）
