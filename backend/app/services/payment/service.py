@@ -84,7 +84,7 @@ class PaymentService:
     ) -> dict:
         """创建订单 + 调用渠道下单，返回支付凭据（二维码 / 跳转 URL / JSAPI 参数）。
 
-        幂等：同一 user + plan_tier + period_days 的 pending 订单直接复用。
+        幂等：同一 user + plan_tier + period_days + channel 且未超时的 pending 订单复用。
         """
         if plan_tier not in PLAN_PRICING_CENTS:
             raise ValidationError(f"不支持的套餐: {plan_tier}")
@@ -105,13 +105,32 @@ class PaymentService:
 
         amount_cents = PLAN_PRICING_CENTS[plan_tier][period_days]
 
-        # 幂等：查是否有同 user+plan+period 的 pending 订单
+        # 幂等：复用键必须与「渠道 + 时限」一致。
+        # ① 只复用同 user + plan + period + channel 的 pending 单；
+        #    此前缺 channel，导致同一订单混挂 alipay / wechat 两条流水。
+        # ② 只复用未超时的单；超时单先关闭再新建，否则会把失效的二维码发给用户。
+        cutoff = datetime.now(UTC) - timedelta(minutes=PENDING_TIMEOUT_MINUTES)
+        stale = await self._session.execute(
+            select(Order).where(
+                Order.user_id == user_id,
+                Order.plan_tier == plan_tier,
+                Order.period_days == period_days,
+                Order.payment_channel == channel,
+                Order.status == PaymentStatus.PENDING,
+                Order.created_at < cutoff,
+            )
+        )
+        for old in stale.scalars().all():
+            await self._close_order(old)
+
         existing = await self._session.scalar(
             select(Order).where(
                 Order.user_id == user_id,
                 Order.plan_tier == plan_tier,
                 Order.period_days == period_days,
+                Order.payment_channel == channel,
                 Order.status == PaymentStatus.PENDING,
+                Order.created_at >= cutoff,
             )
         )
         if existing is not None:
@@ -334,16 +353,31 @@ class PaymentService:
             await self._session.refresh(order)
         return order
 
+    async def _close_order(self, order: Order) -> None:
+        """关闭订单，并同步关闭其所有未支付的支付流水。
+
+        此前只改 Order 状态，Payment 仍长期挂 pending，导致对账口径错误。
+        """
+        order.status = PaymentStatus.CLOSED
+        rows = await self._session.execute(
+            select(Payment).where(
+                Payment.order_id == order.id,
+                Payment.status == PaymentStatus.PENDING,
+            )
+        )
+        for p in rows.scalars().all():
+            p.status = PaymentStatus.CLOSED
+        await self._session.flush()
+
     async def close_if_expired(self, order: Order) -> bool:
-        """pending 订单超过 2h 未支付则关闭。返回是否已关闭。"""
+        """pending 订单超过 2h 未支付则关闭（含同步关闭其 pending 流水）。返回是否已关闭。"""
         if order.status != PaymentStatus.PENDING:
             return False
         if (
             order.created_at is not None
             and datetime.now(UTC) - order.created_at > timedelta(minutes=PENDING_TIMEOUT_MINUTES)
         ):
-            order.status = PaymentStatus.CLOSED
-            await self._session.flush()
+            await self._close_order(order)
             logger.info("payment_order_closed_timeout", order_id=str(order.id))
             return True
         return False
