@@ -545,6 +545,25 @@ class MockProvider(LLMProvider):
                 ],
             }
 
+        # 法律研究（PHASE 1-3：结构化 8 段 + 引证）
+        if "法律研究" in prompt and "citations" in prompt:
+            return {
+                "conclusion": "依据检索结果，该事项应遵循法定程序办理。",
+                "legal_basis": "《民法典》第十二条；《行政许可法》第十五条。",
+                "analysis": "结合事实与法条，行为符合法定要件。",
+                "conditions_exceptions": "需以主体适格且程序完整为前提。",
+                "risks_to_verify": "具体适用条件需人工复核。",
+                "official_sources": "全国人大网。",
+                "citations": [
+                    {
+                        "law_name": "民法典",
+                        "article_no": "第十二条",
+                        "quoted_text": "十周岁以上的未成年人为限制民事行为能力人。",
+                    }
+                ],
+                "confidence": 0.8,
+            }
+
         # 报告生成
         if "审查报告" in prompt:
             return {

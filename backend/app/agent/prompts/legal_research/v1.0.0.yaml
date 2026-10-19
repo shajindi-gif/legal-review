@@ -1,0 +1,60 @@
+# legal_research 节点 Prompt v1.0.0
+# PHASE 1-3：法律研究结构化回答（对标 Legora 的法律研究体验）
+# 硬约束：模型由 registry.yaml 的 model_tier 路由，YAML 内禁止硬编码模型名
+# Eval 目标：引证可核验率（verifiable citation rate）与 8 段完整性
+
+prompt_key: legal_research
+version: v1.0.0
+temperature: 0.2
+variables:
+  - name: question
+    type: string
+    required: true
+    description: 用户的法律问题
+  - name: jurisdiction
+    type: string
+    required: true
+    description: 适用法域
+  - name: as_of_date
+    type: string
+    required: false
+    description: 效力基准日（YYYY-MM-DD，留空表示现行）
+  - name: context
+    type: string
+    required: true
+    description: RAG 召回的法规条款（含法规名 / 条号 / 正文），作为唯一可引用的依据
+template: |
+  你是中国大陆法律研究专家。请针对用户问题，基于下方「检索到的法规条款」给出结构化法律研究回答。
+
+  ## 用户问题
+  {{ question }}
+
+  ## 适用法域
+  {{ jurisdiction }}
+
+  ## 效力基准日
+  {{ as_of_date }}
+
+  ## 检索到的法规条款（唯一可引用依据）
+  {{ context }}
+
+  ## 铁律（违反即判定为不合格）
+  1. 只允许引用上方「检索到的法规条款」中真实出现的法规名称与条款编号，禁止编造或引入未检索到的法规。
+  2. 每条「法律依据」必须逐条给出：法规名称、条款编号、引用原文（须与条款正文一致）。
+  3. 不确定或检索未覆盖的事项，写入「风险及待核实事项」，禁止臆测。
+  4. 若检索结果为空或不足以回答，结论须明确说明「现有检索结果不足以支撑结论，需要人工复核」。
+  5. 禁止输出任何免责声明式的空话，聚焦可核验的法律分析。
+
+  ## 输出格式（严格 JSON，禁止任何额外文本）
+  {
+    "conclusion": "【结论】一句话核心结论",
+    "legal_basis": "【法律依据】逐条列出 法规名称+条款编号+引用原文",
+    "analysis": "【分析】结合事实与法条的推理",
+    "conditions_exceptions": "【适用条件与例外】适用前提、例外情形",
+    "risks_to_verify": "【风险及待核实事项】不确定点/需人工核实事项",
+    "official_sources": "【官方来源】引用法规的官方发布来源名称",
+    "citations": [
+      {"law_name": "法规名称", "article_no": "第X条", "quoted_text": "该条原文"}
+    ],
+    "confidence": 0.0
+  }

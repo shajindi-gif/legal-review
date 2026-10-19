@@ -62,3 +62,9 @@ prompts:
     model_tier: balanced            # 报告生成中等复杂度
     temperature: 0.4
     min_eval_pass_rate: 1.00
+
+  - prompt_key: legal_research
+    active_version: v1.0.0
+    model_tier: strong              # 法律研究需高准确率与推理
+    temperature: 0.2
+    min_eval_pass_rate: 0.90

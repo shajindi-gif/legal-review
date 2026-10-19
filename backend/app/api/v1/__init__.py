@@ -17,6 +17,7 @@ from app.api.v1 import (
     legal,
     metrics,
     notifications,
+    research,
     search,
     tasks,
     user_feedback,
@@ -27,6 +28,7 @@ api_router.include_router(auth.router)
 api_router.include_router(account.router)
 api_router.include_router(documents.router)
 api_router.include_router(legal.router)
+api_router.include_router(research.router)
 api_router.include_router(tasks.router)
 api_router.include_router(eval.router)
 api_router.include_router(feedback.router)
