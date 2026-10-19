@@ -534,8 +534,8 @@ export default function HomePage() {
             ) : (
               <p className="text-amber-400">经营主体信息待补充</p>
             )}
-            {siteInfo.icpRecord ? (
-              <p>
+            <p>
+              {siteInfo.icpRecord ? (
                 <a
                   href="https://beian.miit.gov.cn/"
                   target="_blank"
@@ -544,10 +544,21 @@ export default function HomePage() {
                 >
                   {siteInfo.icpRecord}
                 </a>
-              </p>
-            ) : (
-              <p className="text-amber-400">ICP 备案号待补充</p>
-            )}
+              ) : (
+                <span className="text-amber-400">ICP 备案号待补充</span>
+              )}
+              {siteInfo.contactEmail && (
+                <>
+                  {" · 客服邮箱："}
+                  <a
+                    href={`mailto:${siteInfo.contactEmail}`}
+                    className="hover:text-neutral-300"
+                  >
+                    {siteInfo.contactEmail}
+                  </a>
+                </>
+              )}
+            </p>
             {siteInfo.icpSecurityRecord && <p>{siteInfo.icpSecurityRecord}</p>}
           </div>
         </div>
