@@ -243,3 +243,83 @@ class GoldenCategory(StrEnum):
     CONTENT_VIOLATION = "content_violation"
     BOUNDARY = "boundary"
     NON_NORMATIVE = "non_normative"
+
+
+# ============== 统一工作台（Workspace）==============
+class ProjectType(StrEnum):
+    LEGAL_RESEARCH = "legal_research"      # 法律研究
+    CONTRACT_REVIEW = "contract_review"    # 合同审查
+    GOV_REVIEW = "gov_review"              # 规范性文件合法性审核
+    DOCUMENT_DRAFT = "document_draft"      # 文书起草
+
+
+class ProjectStatus(StrEnum):
+    ACTIVE = "active"
+    ARCHIVED = "archived"
+    CLOSED = "closed"
+
+
+class DocumentVersionStatus(StrEnum):
+    DRAFT = "draft"
+    FINAL = "final"
+    SUPERSEDED = "superseded"
+
+
+# ============== 法律研究 ==============
+class ResearchStatus(StrEnum):
+    DRAFT = "draft"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+# ============== 合同审查 ==============
+class ReviewStance(StrEnum):
+    """审查立场（对照修改视图的视角）。"""
+
+    PARTY_A = "party_a"    # 甲方立场
+    PARTY_B = "party_b"    # 乙方立场
+    NEUTRAL = "neutral"    # 中立
+
+
+class ContractRiskLevel(StrEnum):
+    """合同风险分级（5 档，含 INFO 提示项）。"""
+
+    CRITICAL = "critical"
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+    INFO = "info"
+
+
+class ContractReviewStatus(StrEnum):
+    PENDING = "pending"
+    REVIEWING = "reviewing"
+    DONE = "done"
+    FAILED = "failed"
+
+
+CONTRACT_RISK_LEVEL_ORDER: dict[str, int] = {
+    ContractRiskLevel.CRITICAL: 0,
+    ContractRiskLevel.HIGH: 1,
+    ContractRiskLevel.MEDIUM: 2,
+    ContractRiskLevel.LOW: 3,
+    ContractRiskLevel.INFO: 4,
+}
+
+
+# ============== 权威数据源（合规登记）==============
+class LegalSourceType(StrEnum):
+    OFFICIAL_DB = "official_db"    # 官方数据库（如国家法律法规数据库）
+    GOV_PORTAL = "gov_portal"      # 政府门户网站
+    LOCAL_GOV = "local_gov"        # 地方人大/政府
+    OPEN_DATA = "open_data"        # 开放数据平台
+    MANUAL = "manual"              # 人工录入
+
+
+class SourceAuthorizationStatus(StrEnum):
+    """数据源合规状态：未核实前一律 UNKNOWN，禁止宣称 READY。"""
+
+    VERIFIED = "verified"        # 已核实可合规访问（robots/条款允许）
+    RESTRICTED = "restricted"    # 受限（需授权/登录）
+    PROHIBITED = "prohibited"    # 禁止抓取
+    UNKNOWN = "unknown"          # 未核实
