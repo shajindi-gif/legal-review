@@ -9,6 +9,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_actor, get_audit_service, get_db
 from app.core.constants import AuditAction, LawLevel, LawStatus, LawType
+from app.schemas.citation import (
+    CitationBatchRequest,
+    CitationBatchResponse,
+    CitationClaim,
+    CitationVerificationResult,
+)
 from app.schemas.legal import (
     LawTimeValidity,
     LegalDocumentCreate,
@@ -19,6 +25,7 @@ from app.schemas.legal import (
     RAGSearchResponse,
 )
 from app.services.audit import AuditService
+from app.services.citation_verifier import CitationVerifier, DbLawLookup
 from app.services.legal_library import LegalLibraryService
 from app.tools.rag import RAGSearchService
 
@@ -33,6 +40,11 @@ def get_legal_library_service(
 
 def get_rag_service(session: AsyncSession = Depends(get_db)) -> RAGSearchService:
     return RAGSearchService(session)
+
+
+def get_citation_verifier(session: AsyncSession = Depends(get_db)) -> CitationVerifier:
+    """法律依据核验引擎（PHASE 1：Citation Verification）。"""
+    return CitationVerifier(DbLawLookup(session))
 
 
 # ============== 导入 ==============
@@ -235,3 +247,31 @@ async def rag_search(
     - Top-K 召回 + 加权融合
     """
     return await rag.search(req)
+
+
+# ============== 法律依据核验（Citation Verification）==============
+@router.post("/citations/verify", response_model=CitationVerificationResult)
+async def verify_citation(
+    claim: CitationClaim,
+    verifier: CitationVerifier = Depends(get_citation_verifier),
+) -> CitationVerificationResult:
+    """核验单条法律依据（名称 + 条款编号 + 引用原文 + 时效）。
+
+    无法核验时返回明确状态与「暂未找到可核验的权威依据，需要人工复核」提示。
+    """
+    return await verifier.verify(claim)
+
+
+@router.post("/citations/verify-batch", response_model=CitationBatchResponse)
+async def verify_citations_batch(
+    req: CitationBatchRequest,
+    verifier: CitationVerifier = Depends(get_citation_verifier),
+) -> CitationBatchResponse:
+    """批量核验法律依据，返回逐条结果与汇总统计。"""
+    results = await verifier.verify_many(req.claims)
+    return CitationBatchResponse(
+        total=len(results),
+        verified=sum(1 for r in results if r.verified),
+        needs_human_review=sum(1 for r in results if r.needs_human_review),
+        results=results,
+    )
