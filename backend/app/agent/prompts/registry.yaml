@@ -68,3 +68,9 @@ prompts:
     model_tier: strong              # 法律研究需高准确率与推理
     temperature: 0.2
     min_eval_pass_rate: 0.90
+
+  - prompt_key: contract_review
+    active_version: v1.0.0
+    model_tier: strong              # 合同审查需高准确率与条款定位
+    temperature: 0.2
+    min_eval_pass_rate: 0.90

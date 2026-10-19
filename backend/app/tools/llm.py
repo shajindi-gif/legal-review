@@ -564,6 +564,43 @@ class MockProvider(LLMProvider):
                 "confidence": 0.8,
             }
 
+        # 合同审查（PHASE 1-4：风险分级 + 对照修改视图）
+        if "对照修改视图" in prompt and "findings" in prompt:
+            return {
+                "contract_type": "房屋租赁合同",
+                "summary": "合同整体存在押金条款不利风险，建议修改后再签署。",
+                "findings": [
+                    {
+                        "level": "high",
+                        "clause_no": "第3条",
+                        "clause_text": "乙方支付的押金，甲方有权不予退还。",
+                        "issue": "押金一律不退，显失公平且可能无效。",
+                        "suggestion": "修改为：租赁期满且无违约的，甲方应于 7 日内无息退还押金。",
+                        "basis": {
+                            "law_name": "民法典",
+                            "article_no": "第十二条",
+                            "quoted_text": "十周岁以上的未成年人为限制民事行为能力人。",
+                        },
+                    },
+                    {
+                        "level": "info",
+                        "clause_no": "第1条",
+                        "clause_text": "本合同未尽事宜，双方另行协商。",
+                        "issue": "未约定争议解决方式。",
+                        "suggestion": "补充争议解决条款（管辖法院或仲裁机构）。",
+                    },
+                ],
+                "redline": [
+                    {
+                        "clause_no": "第3条",
+                        "before": "乙方支付的押金，甲方有权不予退还。",
+                        "after": "租赁期满且乙方无违约的，甲方应于 7 日内无息退还押金。",
+                        "reason": "押金一律不退显失公平。",
+                        "level": "high",
+                    }
+                ],
+            }
+
         # 报告生成
         if "审查报告" in prompt:
             return {

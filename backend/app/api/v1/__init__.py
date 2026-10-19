@@ -11,6 +11,7 @@ from app.api.v1 import (
     audit,
     auth,
     billing,
+    contract,
     documents,
     eval,
     feedback,
@@ -29,6 +30,7 @@ api_router.include_router(account.router)
 api_router.include_router(documents.router)
 api_router.include_router(legal.router)
 api_router.include_router(research.router)
+api_router.include_router(contract.router)
 api_router.include_router(tasks.router)
 api_router.include_router(eval.router)
 api_router.include_router(feedback.router)

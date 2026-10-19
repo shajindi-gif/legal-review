@@ -31,12 +31,12 @@ from app.services.prompt_manager import (
 
 # ============== registry 加载 ==============
 def test_load_registry_loads_all_entries() -> None:
-    """启动加载 registry.yaml → 内存 9 个 prompt_key。"""
+    """启动加载 registry.yaml → 内存 10 个 prompt_key。"""
     pm = PromptManager()
     pm.load_registry()
 
     keys = pm.list_keys()
-    # 9 个核心 prompt
+    # 10 个核心 prompt
     expected = {
         "doc_classify",
         "legal_query",
@@ -47,6 +47,7 @@ def test_load_registry_loads_all_entries() -> None:
         "evidence_verify",
         "report_generation",
         "legal_research",
+        "contract_review",
     }
     assert expected.issubset(set(keys)), f"缺失: {expected - set(keys)}"
 
@@ -56,7 +57,7 @@ def test_load_registry_idempotent() -> None:
     pm = PromptManager()
     pm.load_registry()
     pm.load_registry()
-    assert len(pm.list_keys()) == 9
+    assert len(pm.list_keys()) == 10
 
 
 def test_load_registry_missing_file_returns_empty() -> None:
@@ -344,9 +345,9 @@ async def test_sync_to_db_inserts_missing_prompts() -> None:
 
     synced = await pm.sync_to_db(session)
 
-    # 应插入 9 条（registry 中 9 个 prompt_key，每个插入 1 条）
-    assert synced == 9
-    assert len(added_objects) == 9
+    # 应插入 10 条（registry 中 10 个 prompt_key，每个插入 1 条）
+    assert synced == 10
+    assert len(added_objects) == 10
     # 验证插入对象
     first = added_objects[0]
     assert first.status == PromptStatus.ACTIVE.value
@@ -400,7 +401,7 @@ async def test_sync_to_db_reactivates_deprecated() -> None:
     session.add = MagicMock()
 
     synced = await pm.sync_to_db(session)
-    assert synced == 9
+    assert synced == 10
     session.add.assert_not_called()
 
 

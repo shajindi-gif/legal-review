@@ -63,11 +63,36 @@
 - 校验：`ruff`/`mypy` 全绿、`pytest` 506 passed（仅基线 3 个 `test_report_export` FAIL）。
 - 连带更新：`tests/test_prompt_manager.py` 中 registry 计数 8→9（新增 legal_research）。
 
+## PHASE 1-4 — Contract Review 模块（风险分级 + 对照修改视图）
+
+- 版本化 Prompt：`app/agent/prompts/contract_review/v1.0.0.yaml` + `registry.yaml` 注册
+  （`model_tier: strong`，禁止在 YAML 硬编码模型名）。
+- 新增 `app/services/contract_review.py`（`ContractReviewService`）：
+  - 解析文本（复用 `app/tools/parsers.py` DOCX/PDF/TXT 保真段落，带段落锚点）→
+    版本化 Prompt → LLM 结构化输出。
+  - 风险分级固定 5 档（CRITICAL/HIGH/MEDIUM/LOW/INFO），非法值降级为 INFO；
+    审查立场甲/乙/中立（`ReviewStance`）；`overall_risk` 取 findings 最高等级。
+  - 输出「对照修改视图」= findings（问题清单）+ redline（before→after）；
+    **仅建议视图，不伪装 Word 原生修订**；无风险时数组为空，不臆造。
+  - 每条 risk 的法律依据（basis）走 `CitationVerifier` 核验，回填
+    `basis_status`/`basis_verified`/`basis_source_url`，未核实项显式标注。
+  - 持久化 `contract_reviews`（findings/redline JSONB，含 prompt 版本与 LLM 用量元数据）。
+  - 降级策略：LLM 失败落库 `failed` 记录（可追溯），摘要置占位文本。
+- 新增 `app/schemas/contract.py`（`ContractFinding`/`ContractRedlineItem`/
+  `ContractReviewRequest`/`ContractReviewRead`/列表/`highest_risk`/立场与等级中文标签）。
+- API：`POST /contract/reviews`（multipart 上传 docx/pdf/txt）、
+  `POST /contract/reviews/text`（纯文本）、`GET /contract/reviews`、
+  `GET /contract/reviews/{id}`（JWT 鉴权 + 多租户隔离 + 文件类型/大小校验 + OCR 提示）。
+- 测试：`tests/test_contract_review.py` 11 例全绿（纯函数 / 编排层 / API 层）。
+- 校验：`ruff`/`mypy`（strict，106 文件）全绿、`pytest` 517 passed（仅基线 3 个
+  `test_report_export` FAIL）。
+- 连带更新：`tests/test_prompt_manager.py` 中 registry 计数 9→10（新增 contract_review）。
+
 ---
 
 ## 未完成项（滚动记录）
 
 - 数据源适配器：需逐源核实 robots.txt / 使用条款 / 授权后再实现抓取，未核实前
   `legal_sources.authorization_status` 保持 `unknown`，不得宣称 READY。
-- Contract Review / 规范性审核增强 / 前端三栏工作台：PHASE 1 后续条目。
+- 规范性审核增强 / 前端三栏工作台：PHASE 1 后续条目。
 - 技术债：CI 缺前端 typecheck/lint 与 E2E；`analytics_events` 等历史索引漂移需单独迁移清理。
