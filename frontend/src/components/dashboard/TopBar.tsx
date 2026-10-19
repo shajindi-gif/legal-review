@@ -15,8 +15,10 @@ import {
   FileUp,
   Sparkles,
   Keyboard,
+  PanelRight,
 } from "lucide-react";
 import { useAuthStore } from "@/lib/auth";
+import { useWorkspace } from "@/lib/workspace-context";
 import { logout as logoutApi } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -45,6 +47,7 @@ export function TopBar({ onMenuClick }: TopBarProps) {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
+  const { open: contextOpen, toggle: toggleContextPanel } = useWorkspace();
   const newTriggerRef = React.useRef<HTMLButtonElement | null>(null);
   const [searchOpen, setSearchOpen] = React.useState(false);
 
@@ -216,6 +219,24 @@ export function TopBar({ onMenuClick }: TopBarProps) {
             </DropdownMenu.Content>
           </DropdownMenu.Portal>
         </DropdownMenu.Root>
+
+        {/* 上下文面板开关（第三栏） */}
+        <button
+          type="button"
+          onClick={toggleContextPanel}
+          aria-label={contextOpen ? "关闭上下文面板" : "打开上下文面板"}
+          aria-pressed={contextOpen}
+          title="上下文面板"
+          className={cn(
+            "hidden h-9 w-9 items-center justify-center rounded-lg transition-colors lg:inline-flex",
+            contextOpen
+              ? "bg-brand-50 text-brand-700"
+              : "text-neutral-600 hover:bg-neutral-100",
+          )}
+          data-testid="context-panel-toggle"
+        >
+          <PanelRight className="h-5 w-5" />
+        </button>
 
         {/* UI-M8.3 通知中心铃铛 */}
         <NotificationBell />

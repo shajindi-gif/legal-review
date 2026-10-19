@@ -88,11 +88,33 @@
   `test_report_export` FAIL）。
 - 连带更新：`tests/test_prompt_manager.py` 中 registry 计数 9→10（新增 contract_review）。
 
+## PHASE 1-6 — 前端统一工作台（三栏 + 11 模块一级导航）
+
+- 新增 `frontend/src/lib/nav.ts`：11 个一级模块的**单一事实源**（工作台 / 法律研究 /
+  AI 助手 / 合同审查 / 文件分析 / 规范性文件审核 / 法律文书 / AI 工作流 / 法律知识库 /
+  项目与团队 / 管理与设置），每项含 `roles` 角色白名单与 `comingSoon` 标记；
+  遵循既有硬约束「未真正实现的模块不展示假入口」——未实现模块置 `comingSoon: true`，
+  不可点击并显示「即将」角标。
+- 重写 `SideNav.tsx`：由 `nav.ts` 驱动渲染并**按登录角色过滤显隐**
+  （合同审查/法律文书/项目与团队仅对 reviewer/supervisor/admin 可见）；
+  「更多」分组保留通知 / 报告 / 反馈 / 历史；管理员分组保留管理后台 / 用户反馈；
+  底部为套餐计费 / 账户设置（账户设置指向真实 `/account`）。
+- 新增 `frontend/src/lib/workspace-context.tsx`：`WorkspaceProvider` / `useWorkspace` /
+  `useRegisterContextPanel`（页面挂载时注入第三栏内容、卸载清除）。
+- 新增 `frontend/src/components/dashboard/ContextPanel.tsx`：三栏布局第三栏
+  （右侧上下文面板，宽 320px；桌面端可开合、移动端隐藏；无页面内容时展示明确空状态，
+  不伪造内容）。
+- 改造 `AppShell.tsx`：`SideNav + 主区 + ContextPanel` 三栏布局；
+  `TopBar.tsx` 新增上下文面板开关（`PanelRight`，`data-testid="context-panel-toggle"`）。
+- 校验：`npx tsc --noEmit` 通过；`pnpm build` 通过（21 条路由全部编译成功）。
+
 ---
 
 ## 未完成项（滚动记录）
 
 - 数据源适配器：需逐源核实 robots.txt / 使用条款 / 授权后再实现抓取，未核实前
   `legal_sources.authorization_status` 保持 `unknown`，不得宣称 READY。
-- 规范性审核增强 / 前端三栏工作台：PHASE 1 后续条目。
+- 规范性审核增强（规则包 + 10 段输出 + 导出）：PHASE 1 后续条目。
+- 前端：法律研究 / 合同审查 / 法律文书 / 法律知识库 / 项目与团队 仍为 `comingSoon`
+  （后端已就绪的模块待补前端页面后解锁入口）；Context Panel 需各页面按需注册内容。
 - 技术债：CI 缺前端 typecheck/lint 与 E2E；`analytics_events` 等历史索引漂移需单独迁移清理。
