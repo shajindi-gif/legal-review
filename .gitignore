@@ -46,3 +46,7 @@ uploads/
 *.sqlite
 *.db
 legal_review.db
+
+# ============== E2E（Playwright）产物 ==============
+frontend/test-results/
+frontend/playwright-report/
