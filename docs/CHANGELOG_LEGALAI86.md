@@ -119,7 +119,7 @@
   - `GET /tasks/{task_id}/gov-report`（10 段标准报告）
   - `GET /tasks/{task_id}/gov-export?format=docx|pdf|xlsx`（意见书 / 报告 / 清单）
   - `GET /tasks/{task_id}/report/export`（通用审查意见书 DOCX）
-- 测试：`tests/test_gov_review.py` 22 例全绿（规则包 / 报告 / 导出 / HTTP 四层）。
+- 测试：`tests/test_gov_review.py` 23 例全绿（规则包 / 报告 / 导出 / HTTP 四层）。
 - 校验：`ruff` 全绿、`mypy`（strict，111 文件）全绿、`pytest` **543 passed**（含此前
   基线 3 个 `test_report_export` 用例，因 `/tasks/{id}/report/export` 已接线而通过）。
 - 依赖：`pyproject.toml` 新增 `openpyxl>=3.1.0`（weasyprint 已在），mypy overrides 补
@@ -147,6 +147,30 @@
 
 ---
 
+## PHASE 1-7 — 交付文档集（指令「最终交付」清单）
+
+- 按指令要求补齐文档集（均置于 `docs/`，内容以真实代码为据，未编造指标）：
+  - `LEGALAI86_ARCHITECTURE.md`（473 行）：总体架构、LangGraph 两层 Graph 与 11 节点、
+    Pattern/版本治理、鉴权与多租户、模块五态矩阵、关键数据流、部署拓扑。
+  - `LEGALAI86_PRD.md`：对标 Legora 定位、角色、三大流程闭环、11 模块五态矩阵、
+    验收场景、非目标。
+  - `LEGALAI86_DATABASE.md`：数据层概览、按域表清单、JSONB/索引、
+    10 个迁移版本链与回滚策略、多租户约定。
+  - `LEGALAI86_API.md`：鉴权/错误/限流约定、按 router 分组的端点总表、关键端点示例、
+    本次新增端点、鉴权偏离与未实现端点（如实标注）。
+  - `LEGALAI86_COMPLIANCE.md`：数据源授权（未核实前 `unknown`）、隐私与个人信息、
+    内容安全、AI 免责与「不编造引用」机制、多租户隔离、沙箱、密钥、审计、域名备案、支付合规。
+  - `BENCHMARK.md`：指标口径定义 + **首期验收目标（显式标注「未评测/目标值」，不得宣称达标）**
+    + 当前真实工程门禁统计（543 passed / 27 skipped）+ 评测方法论（专业标注答案，模型自评不作唯一依据）。
+  - `DEPLOYMENT.md`（510 行）：生产序列（tar 增量→备份→build→alembic upgrade→up -d）、
+    9 个部署脚本说明、三种模式（常规 / ALIPAY_ONLY / 回滚）、健康检查、备份恢复、
+    上线检查清单、安全红线。
+- 文档更名：`docs/LEGALAI86_CHANGELOG.md` → `docs/CHANGELOG_LEGALAI86.md`（对齐指令命名）。
+- 据实修正既有认知（以代码为准）：前端为 **Next.js 16.3.2 + React 19**（非 14）；
+  向量检索由 **pgvector** 承担，代码中**未接入 Qdrant**。
+
+---
+
 ## 未完成项（滚动记录）
 
 - 数据源适配器：需逐源核实 robots.txt / 使用条款 / 授权后再实现抓取，未核实前
@@ -157,3 +181,9 @@
 - 前端：法律研究 / 合同审查 / 法律文书 / 法律知识库 / 项目与团队 仍为 `comingSoon`
   （后端已就绪的模块待补前端页面后解锁入口）；Context Panel 需各页面按需注册内容。
 - 技术债：CI 缺前端 typecheck/lint 与 E2E；`analytics_events` 等历史索引漂移需单独迁移清理。
+- PHASE 1-7 文档集：**已补齐**（见上节）。文档核出的待改项（如实记录，未修）：
+  - 鉴权偏离：`legal` / `eval` / `feedback` / `admin-user-feedback` 仍用 `X-User-Id`/`X-User-Role`
+    （`get_actor`），`audit` / `metrics` 无鉴权，与「用户面必须 JWT」约定不符。
+  - 租户隔离缺口：`notifications` / `feedback` 未接入 `organization_id` 过滤
+    （`docs/rectification/00_ISSUE_REGISTER.md` R2-2）。
+  - 前端引用但后端未实现：`frontend/src/lib/sse.ts` 调用 `/tasks/{id}/stream`；`GET /auth/quota` 冻结 501。
