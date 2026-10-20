@@ -10,9 +10,10 @@
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import quote
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy import Select, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,8 +22,21 @@ from app.core.errors import AppError, NotFoundError
 from app.models.document import Document
 from app.models.task import ReviewResult, ReviewTask
 from app.schemas.document import DocumentRead
+from app.schemas.gov_review import GovReviewReport
 from app.schemas.task import TaskListResponse, TaskRead, TaskStatusResponse
 from app.services.core_auth_client import CorePrincipal
+from app.services.gov_export import (
+    DOCX_MIME,
+    EXPORT_FORMATS,
+    PDF_MIME,
+    XLSX_MIME,
+    render_findings_xlsx,
+    render_opinion_docx,
+    render_report_pdf,
+)
+from app.services.gov_review_report import build_gov_report
+from app.services.gov_rules import get_gov_rule_pack_manager
+from app.services.report_export import markdown_to_docx
 from app.services.tenant import apply_org_filter_with_column
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
@@ -248,3 +262,149 @@ async def get_task_report(
         "risks": rr.risks or [],
         "evidences": rr.evidences or [],
     }
+
+
+# ============== 附件响应工具 ==============
+def _attachment(content: bytes, media_type: str, filename: str) -> Response:
+    """构造带中文文件名的附件下载响应（RFC 5987 filename*）。"""
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={
+            "Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"
+        },
+    )
+
+
+# ============== 报告交付物导出（PHASE 1：复用 report_export）==============
+@router.get("/{task_id}/report/export")
+async def export_task_report(
+    task_id: UUID,
+    format: str = Query("docx", description="导出格式（当前仅支持 docx）"),
+    filename: str | None = Query(None, description="自定义文件名（不含扩展名）"),
+    db: AsyncSession = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context),
+) -> Response:
+    """导出审查意见书（DOCX）。
+
+    复用 ``app.services.report_export.markdown_to_docx``；
+    非 docx 格式返回 422；报告未生成返回 404。
+    """
+    if format != "docx":
+        raise AppError(
+            http_status=422,
+            code="UNSUPPORTED_FORMAT",
+            message=f"不支持的导出格式：{format}（仅支持 docx）",
+        )
+    task = await _load_task(db, task_id, ctx=ctx)
+    result = await db.execute(
+        select(ReviewResult)
+        .where(
+            ReviewResult.task_id == task.id,
+            ReviewResult.agent_name == "report_generation",
+        )
+        .order_by(desc(ReviewResult.created_at))
+        .limit(1)
+    )
+    rr = result.scalar_one_or_none()
+    if rr is None:
+        raise AppError(
+            http_status=404,
+            code="REPORT_NOT_READY",
+            message=f"任务 {task_id} 尚未生成报告（当前节点：{task.current_node}）",
+        )
+    markdown = (rr.output_json or {}).get("report_markdown") or ""
+    name = (filename or getattr(task, "title", None) or "审查意见书") + ".docx"
+    return _attachment(
+        markdown_to_docx(markdown, title="审查意见书"), DOCX_MIME, name
+    )
+
+
+# ============== 规范性文件合法性审核（PHASE 1-5）==============
+async def _load_gov_report(
+    db: AsyncSession, task: ReviewTask, region: str | None
+) -> GovReviewReport:
+    """加载送审文件 + 全部审查结果，组装 10 段标准报告。"""
+    doc_result = await db.execute(
+        select(Document)
+        .where(Document.task_id == task.id, Document.deleted_at.is_(None))
+        .limit(1)
+    )
+    document = doc_result.scalar_one_or_none()
+    results = (
+        await db.execute(select(ReviewResult).where(ReviewResult.task_id == task.id))
+    ).scalars().all()
+
+    effective_region = region
+    if effective_region is None:
+        meta = getattr(task, "metadata_", None)
+        if isinstance(meta, dict):
+            effective_region = meta.get("region") or None
+
+    packs = get_gov_rule_pack_manager().resolve_for_region(effective_region)
+    return build_gov_report(
+        results=list(results),
+        packs=packs,
+        document=document,
+        task=task,
+        region=effective_region,
+    )
+
+
+@router.get("/{task_id}/gov-report", response_model=GovReviewReport)
+async def get_gov_report(
+    task_id: UUID,
+    region: str | None = Query(
+        default=None, description="适用区域，如 上海市徐汇区；缺省取任务元数据 region"
+    ),
+    db: AsyncSession = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context),
+) -> GovReviewReport:
+    """规范性文件合法性审核报告（指令要求的 10 段输出标准）。"""
+    task = await _load_task(db, task_id, ctx=ctx)
+    return await _load_gov_report(db, task, region)
+
+
+@router.get("/{task_id}/gov-export")
+async def export_gov_report(
+    task_id: UUID,
+    format: str = Query("docx", description="docx=意见书 | pdf=报告 | xlsx=条款问题清单"),
+    region: str | None = Query(default=None, description="适用区域"),
+    filename: str | None = Query(None, description="自定义文件名（不含扩展名）"),
+    db: AsyncSession = Depends(get_db),
+    ctx: TenantContext = Depends(get_tenant_context),
+) -> Response:
+    """导出规范性文件审核交付物：意见书 DOCX / 报告 PDF / 条款问题清单 XLSX。"""
+    if format not in EXPORT_FORMATS:
+        raise AppError(
+            http_status=422,
+            code="UNSUPPORTED_FORMAT",
+            message=f"不支持的导出格式：{format}（支持 {', '.join(EXPORT_FORMATS)}）",
+        )
+    task = await _load_task(db, task_id, ctx=ctx)
+    report = await _load_gov_report(db, task, region)
+
+    if format == "docx":
+        content, media_type, ext = (
+            render_opinion_docx(report),
+            DOCX_MIME,
+            ".docx",
+        )
+        default_name = "规范性文件合法性审核意见书"
+    elif format == "pdf":
+        content, media_type, ext = (
+            render_report_pdf(report),
+            PDF_MIME,
+            ".pdf",
+        )
+        default_name = "规范性文件审核报告"
+    else:
+        content, media_type, ext = (
+            render_findings_xlsx(report),
+            XLSX_MIME,
+            ".xlsx",
+        )
+        default_name = "条款问题清单"
+
+    name = (filename or default_name) + ext
+    return _attachment(content, media_type, name)

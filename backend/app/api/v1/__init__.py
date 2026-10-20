@@ -15,6 +15,7 @@ from app.api.v1 import (
     documents,
     eval,
     feedback,
+    gov,
     legal,
     metrics,
     notifications,
@@ -31,6 +32,7 @@ api_router.include_router(documents.router)
 api_router.include_router(legal.router)
 api_router.include_router(research.router)
 api_router.include_router(contract.router)
+api_router.include_router(gov.router)
 api_router.include_router(tasks.router)
 api_router.include_router(eval.router)
 api_router.include_router(feedback.router)

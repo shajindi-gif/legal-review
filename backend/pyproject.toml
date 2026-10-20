@@ -42,6 +42,8 @@ dependencies = [
     "pypdf>=4.0.0",
     # PDF 报告
     "weasyprint>=60.0",
+    # XLSX（条款问题清单导出）
+    "openpyxl>=3.1.0",
     # 工具
     "python-dotenv>=1.0.0",
     "uuid-utils>=0.7.0",
@@ -111,7 +113,7 @@ strict_equality = true
 # 无类型存根的重型三方库：本地可不安装（OCR 引擎极大、pdf2image 为可选项），
 # 关闭其缺失导入报错，避免 mypy 需要完整依赖才能静态检查
 [[tool.mypy.overrides]]
-module = ["paddleocr", "paddleocr.*", "pdf2image", "sentence_transformers", "sentry_sdk", "sentry_sdk.*"]
+module = ["paddleocr", "paddleocr.*", "pdf2image", "sentence_transformers", "sentry_sdk", "sentry_sdk.*", "openpyxl", "openpyxl.*", "weasyprint", "weasyprint.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

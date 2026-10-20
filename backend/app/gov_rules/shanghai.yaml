@@ -1,0 +1,78 @@
+# 上海市规则包 — 上海市行政规范性文件合法性审核地方要求
+# 硬约束：地方规则包上线前需法律专业人员审核；未核实字段留空（null）。
+# 适用范围：上海市各级行政机关制定的行政规范性文件。
+
+rules:
+  - rule_id: SH-E-01
+    dimension: E
+    title: 上海市程序要求：公开征求意见与备案
+    risk_type: 程序缺失（上海市要求）
+    severity: high
+    law_basis: 《上海市行政规范性文件管理规定》
+    law_basis_article: null
+    region: 上海市
+    effective_date: null
+    condition: 核查是否按上海市规定履行公开征求意见、合法性审核与备案程序。
+    evidence_required:
+      - 公开征求意见记录
+      - 备案材料
+    exception: 依上海市规定适用简化程序的情形（需说明理由）。
+    source_url: null
+    pending_fields:
+      - law_basis_article
+      - effective_date
+
+  - rule_id: SH-F-01
+    dimension: F
+    title: 上海市公平竞争审查
+    risk_type: 未履行公平竞争审查（上海市要求）
+    severity: high
+    law_basis: 《公平竞争审查条例》
+    law_basis_article: null
+    region: 上海市
+    effective_date: null
+    condition: 涉及经营者经济活动时，按上海市要求识别公平竞争审查要求与审查结论。
+    evidence_required:
+      - 公平竞争审查表/审查意见
+    exception: 依法适用公平竞争审查例外规定的情形（需说明理由）。
+    source_url: null
+    pending_fields:
+      - law_basis_article
+      - effective_date
+
+  - rule_id: SH-G-01
+    dimension: G
+    title: 上海市营商环境与市场准入
+    risk_type: 不合理限制市场准入（上海市要求）
+    severity: high
+    law_basis: 《上海市优化营商环境条例》
+    law_basis_article: null
+    region: 上海市
+    effective_date: null
+    condition: 检查是否存在不合理限制市场准入、地方保护或歧视性规定。
+    evidence_required:
+      - 涉及市场准入事项的依据与必要性说明
+    exception: 依据法律、行政法规设定的准入条件。
+    source_url: null
+    pending_fields:
+      - law_basis_article
+      - effective_date
+
+  - rule_id: SH-J-01
+    dimension: J
+    title: 上海市地方特别规则
+    risk_type: 地方特别要求未满足
+    severity: medium
+    law_basis: 《上海市行政规范性文件管理规定》
+    law_basis_article: null
+    region: 上海市
+    effective_date: null
+    condition: 核查是否满足上海市对文件有效期、评估清理、目录管理等特别要求。
+    evidence_required:
+      - 文件有效期说明
+      - 评估清理安排
+    exception: 依上海市规定可豁免的情形（需说明理由）。
+    source_url: null
+    pending_fields:
+      - law_basis_article
+      - effective_date

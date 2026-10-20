@@ -1,0 +1,43 @@
+# 徐汇区定制规则包 — 区级行政规范性文件合法性审核要求
+# 承接上海市规则包，叠加区级备案与区内重大事项审查。
+# 硬约束：区级实施细则以待区司法局现行规定补充为准；未核实字段留空（null）。
+
+rules:
+  - rule_id: XH-E-01
+    dimension: E
+    title: 徐汇区程序要求：区级备案与审核流程
+    risk_type: 程序缺失（徐汇区要求）
+    severity: high
+    law_basis: 《上海市行政规范性文件管理规定》（区级适用）
+    law_basis_article: null
+    region: 徐汇区
+    effective_date: null
+    condition: 核查是否按区级规定完成起草、审核、审议与报区政府备案流程。
+    evidence_required:
+      - 区级合法性审核意见
+      - 报备材料
+    exception: 依区级规定适用简化程序的情形（需说明理由）。
+    source_url: null
+    pending_fields:
+      - law_basis_article
+      - effective_date
+      - district_implementation_rules
+
+  - rule_id: XH-J-01
+    dimension: J
+    title: 徐汇区地方特别规则
+    risk_type: 区级特别要求未满足
+    severity: medium
+    law_basis: 《上海市行政规范性文件管理规定》（区级适用）
+    law_basis_article: null
+    region: 徐汇区
+    effective_date: null
+    condition: 核查是否满足徐汇区对文件适用范围、有效期与清理机制的特别要求。
+    evidence_required:
+      - 文件适用范围说明
+    exception: 依区级规定可豁免的情形（需说明理由）。
+    source_url: null
+    pending_fields:
+      - law_basis_article
+      - effective_date
+      - district_implementation_rules

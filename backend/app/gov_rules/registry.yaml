@@ -1,0 +1,51 @@
+# 规范性文件合法性审核规则包注册表（PHASE 1-5）
+#
+# 规则包按地域分层：国家通用 / 上海市 / 徐汇区 / 其他地方（可扩展）。
+# 每条规则的字段（指令第六条硬约束）：
+#   law_basis          法律依据
+#   region             适用地区
+#   effective_date     生效时间
+#   condition          审核条件
+#   evidence_required  证据要求（送审材料）
+#   exception          例外条件
+#   risk_type          风险类型
+#
+# 硬约束：
+# 1. 不得把某一地方性规范当成全国通用标准（故按 region 分包）。
+# 2. 地方规则包上线前需法律专业人员审核：未审核通过前
+#    legal_review_status=pending_legal_review，报告必须提示“依据需人工复核”。
+# 3. 未核实的字段一律留空（null），禁止编造法条编号与生效时间。
+
+packs:
+  - pack_id: national_general
+    name: 国家通用规则包
+    scope: national
+    region: 全国
+    legal_review_status: pending_legal_review
+    reviewed_by: null
+    description: >-
+      依据宪法、法律、行政法规与国家层面规范性文件监督管理要求，覆盖制定主体、
+      上位法一致性、行政权力设定、权利义务、程序、公平竞争、营商环境、时效与形式规范。
+    rules_file: national.yaml
+
+  - pack_id: shanghai
+    name: 上海市规则包
+    scope: municipality
+    region: 上海市
+    legal_review_status: pending_legal_review
+    reviewed_by: null
+    description: >-
+      上海市行政规范性文件制定与监督管理的地方要求，覆盖公开征求意见与备案、
+      公平竞争审查、营商环境与市场准入、地方特别事项审核。
+    rules_file: shanghai.yaml
+
+  - pack_id: xuhui
+    name: 徐汇区定制规则包
+    scope: district
+    region: 徐汇区
+    legal_review_status: pending_legal_review
+    reviewed_by: null
+    description: >-
+      徐汇区区级行政规范性文件的定制审核要求（承接上海市规则包并叠加区级备案、
+      区内重大事项审查）。区级实施细则以待区司法局现行规定补充为准。
+    rules_file: xuhui.yaml

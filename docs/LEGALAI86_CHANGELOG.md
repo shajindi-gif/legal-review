@@ -88,6 +88,43 @@
   `test_report_export` FAIL）。
 - 连带更新：`tests/test_prompt_manager.py` 中 registry 计数 9→10（新增 contract_review）。
 
+## PHASE 1-5 — 规范性文件合法性审核增强（规则包 + 10 段输出 + 导出）
+
+> 硬约束遵守：**不删除/弱化/替换**既有司法局 LangGraph 11 节点工作流；因「未经评估的
+> Prompt 变更禁止合并」，本阶段**不修改任何既有 Prompt**，以**确定性（数据驱动、不调
+> LLM）**规则包 + 报告 + 导出层叠加在工作流之上。不编造条号/日期，未核实字段留空。
+
+- 新增规则包注册表 `app/gov_rules/registry.yaml` + 规则包
+  `national.yaml` / `shanghai.yaml` / `xuhui.yaml`（按地域分层：全国 / 上海市 / 徐汇区）。
+  - 字段清单：`rule_id / dimension(A~J) / title / risk_type / severity(critical|high|
+    medium|low|info) / law_basis(仅法规名) / law_basis_article / region / effective_date /
+    condition / evidence_required(送审材料) / exception / source_url / pending_fields`。
+  - 合规诚实性：`law_basis_article: null`、`effective_date: null`（不编造条号/日期），
+    登记 `pending_fields`；`legal_review_status: pending_legal_review`、`reviewed_by: null`
+    （**未核实前不得把地方规范当全国标准**）。
+  - 覆盖维度：national 12 条（A~I）、shanghai 4 条（E/F/G/J）、xuhui 2 条（E/J）。
+- 新增 `app/schemas/gov_review.py`：审核维度 A~J、风险 5 档、结论 4 类
+  （`no_obvious_violation / needs_revision / major_risk / insufficient_basis`）、
+  10 段输出模型（`GOV_REPORT_SECTION_TITLES`）+ `DISCLAIMER` + `MISSING_MATERIAL_NOTE`。
+- 新增 `app/services/gov_rules.py`（`GovRulePackManager`）：加载/校验（维度∈A~J、
+  severity∈5 档）、`resolve_for_region`（国家通用恒选 + 地域子串匹配）、按维度排序。
+- 新增 `app/services/gov_review_report.py`（**确定性、不调 LLM**）：由既有节点结果 + 规则包
+  组装 10 段标准报告（关键词映射维度、条款位置、风险统计、材料缺失、待人工核实、
+  合法性审核意见初稿）；四类结论判定 + 报告统一附免责声明。
+- 新增 `app/services/gov_export.py`：`report_to_markdown`（10 段）；DOCX 复用
+  `report_export.markdown_to_docx`；PDF 走 weasyprint（CJK 字体回退）；XLSX 走 openpyxl
+  （「条款问题清单」+「材料缺失清单」两表）。
+- API（JWT 鉴权 + 多租户 `_load_task`）：
+  - `GET /gov/rule-packs` / `GET /gov/rule-packs/resolve?region=` / `GET /gov/rule-packs/{id}`
+  - `GET /tasks/{task_id}/gov-report`（10 段标准报告）
+  - `GET /tasks/{task_id}/gov-export?format=docx|pdf|xlsx`（意见书 / 报告 / 清单）
+  - `GET /tasks/{task_id}/report/export`（通用审查意见书 DOCX）
+- 测试：`tests/test_gov_review.py` 22 例全绿（规则包 / 报告 / 导出 / HTTP 四层）。
+- 校验：`ruff` 全绿、`mypy`（strict，111 文件）全绿、`pytest` **543 passed**（含此前
+  基线 3 个 `test_report_export` 用例，因 `/tasks/{id}/report/export` 已接线而通过）。
+- 依赖：`pyproject.toml` 新增 `openpyxl>=3.1.0`（weasyprint 已在），mypy overrides 补
+  `openpyxl*` / `weasyprint*`（无 `py.typed`，`ignore_missing_imports`）。
+
 ## PHASE 1-6 — 前端统一工作台（三栏 + 11 模块一级导航）
 
 - 新增 `frontend/src/lib/nav.ts`：11 个一级模块的**单一事实源**（工作台 / 法律研究 /
@@ -114,7 +151,9 @@
 
 - 数据源适配器：需逐源核实 robots.txt / 使用条款 / 授权后再实现抓取，未核实前
   `legal_sources.authorization_status` 保持 `unknown`，不得宣称 READY。
-- 规范性审核增强（规则包 + 10 段输出 + 导出）：PHASE 1 后续条目。
+- 规范性审核增强：**PHASE 1-5 已完成**（规则包 + 10 段输出 + 导出）。规则包
+  `legal_review_status` 仍为 `pending_legal_review`，`law_basis_article`/`effective_date`
+  待逐条核实补全并送法律专业人员审核；`gov-report`/`gov-export` 前端页面未接线。
 - 前端：法律研究 / 合同审查 / 法律文书 / 法律知识库 / 项目与团队 仍为 `comingSoon`
   （后端已就绪的模块待补前端页面后解锁入口）；Context Panel 需各页面按需注册内容。
 - 技术债：CI 缺前端 typecheck/lint 与 E2E；`analytics_events` 等历史索引漂移需单独迁移清理。

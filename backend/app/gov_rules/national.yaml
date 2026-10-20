@@ -1,0 +1,224 @@
+# 国家通用规则包 — 规范性文件合法性审核规则
+# 说明：law_basis 仅列明权威法律/行政法规/规范性文件名称；
+# 具体条号、生效时间在经法律专业人员核实前一律留空（null），
+# 并在 pending_fields 中登记，禁止在未核实情况下编造。
+
+rules:
+  - rule_id: NAT-A-01
+    dimension: A
+    title: 制定主体适格与职权法定
+    risk_type: 主体不合法/超越职权
+    severity: critical
+    law_basis: 《中华人民共和国地方各级人民代表大会和地方各级人民政府组织法》
+    law_basis_article: null
+    region: 全国
+    effective_date: null
+    condition: 核查制定机关是否属于有权制定行政规范性文件的主体，职权是否于法有据。
+    evidence_required:
+      - 制定机关职权依据（三定方案或授权文件）
+    exception: 法律法规明确授权的组织在授权范围内制定。
+    source_url: null
+    pending_fields:
+      - law_basis_article
+      - effective_date
+
+  - rule_id: NAT-B-01
+    dimension: B
+    title: 不得与上位法相抵触
+    risk_type: 与上位法冲突
+    severity: critical
+    law_basis: 《中华人民共和国立法法》
+    law_basis_article: null
+    region: 全国
+    effective_date: null
+    condition: 逐条比对文件内容与法律、行政法规、上级规范性文件是否冲突。
+    evidence_required:
+      - 起草说明（含上位法依据逐条对照）
+    exception: 上位法明确授权地方细化且不突破边界。
+    source_url: null
+    pending_fields:
+      - law_basis_article
+      - effective_date
+
+  - rule_id: NAT-C-01
+    dimension: C
+    title: 不得违法设定行政许可
+    risk_type: 违法设定行政许可
+    severity: critical
+    law_basis: 《中华人民共和国行政许可法》
+    law_basis_article: null
+    region: 全国
+    effective_date: null
+    condition: 检查是否存在设定或变相设定行政许可的事项。
+    evidence_required:
+      - 涉及许可事项的法律法规授权依据
+    exception: 法律、行政法规已明确设定的行政许可之细化执行规定。
+    source_url: null
+    pending_fields:
+      - law_basis_article
+      - effective_date
+
+  - rule_id: NAT-C-02
+    dimension: C
+    title: 不得违法设定行政处罚
+    risk_type: 违法设定行政处罚
+    severity: critical
+    law_basis: 《中华人民共和国行政处罚法》
+    law_basis_article: null
+    region: 全国
+    effective_date: null
+    condition: 检查是否在法律、法规规定之外设定行政处罚。
+    evidence_required:
+      - 拟设处罚事项的上位法依据
+    exception: 法律、法规授权范围内细化处罚幅度。
+    source_url: null
+    pending_fields:
+      - law_basis_article
+      - effective_date
+
+  - rule_id: NAT-C-03
+    dimension: C
+    title: 不得违法设定行政强制
+    risk_type: 违法设定行政强制
+    severity: critical
+    law_basis: 《中华人民共和国行政强制法》
+    law_basis_article: null
+    region: 全国
+    effective_date: null
+    condition: 检查是否设定行政强制措施或行政强制执行。
+    evidence_required:
+      - 拟设强制事项的法律依据
+    exception: 法律明确设定并由行政机关依法实施。
+    source_url: null
+    pending_fields:
+      - law_basis_article
+      - effective_date
+
+  - rule_id: NAT-C-04
+    dimension: C
+    title: 不得违法设定行政征收、收费
+    risk_type: 违法设定征收/收费
+    severity: critical
+    law_basis: 《优化营商环境条例》
+    law_basis_article: null
+    region: 全国
+    effective_date: null
+    condition: 检查是否存在无依据的行政征收、行政收费或变相收费。
+    evidence_required:
+      - 收费项目依据（法律法规或财政、价格主管部门文件）
+    exception: 依法律、行政法规或有权机关规定设立的征收、收费项目。
+    source_url: null
+    pending_fields:
+      - law_basis_article
+      - effective_date
+
+  - rule_id: NAT-D-01
+    dimension: D
+    title: 不得违法增设义务或减损权益
+    risk_type: 违法增设义务/减损权益
+    severity: high
+    law_basis: 《优化营商环境条例》
+    law_basis_article: null
+    region: 全国
+    effective_date: null
+    condition: 核查是否违法增加公民、法人及其他组织义务或减损其合法权益。
+    evidence_required:
+      - 增设义务或限制权益事项的法律依据
+    exception: 为公共利益且于法有据、比例适当的管理措施。
+    source_url: null
+    pending_fields:
+      - law_basis_article
+      - effective_date
+
+  - rule_id: NAT-E-01
+    dimension: E
+    title: 法定程序履行审核
+    risk_type: 程序违法/程序缺失
+    severity: high
+    law_basis: 《规章制定程序条例》
+    law_basis_article: null
+    region: 全国
+    effective_date: null
+    condition: 核查是否履行公开征求意见、合法性审核、集体审议、备案等适用程序。
+    evidence_required:
+      - 公开征求意见记录
+      - 合法性审核意见
+      - 集体审议记录
+      - 备案材料
+    exception: 依法适用简化程序或不宜公开征求意见的情形（需说明理由）。
+    source_url: null
+    pending_fields:
+      - law_basis_article
+      - effective_date
+
+  - rule_id: NAT-F-01
+    dimension: F
+    title: 公平竞争审查
+    risk_type: 未履行公平竞争审查
+    severity: high
+    law_basis: 《公平竞争审查条例》
+    law_basis_article: null
+    region: 全国
+    effective_date: null
+    condition: 涉及经营者经济活动时，识别是否履行公平竞争审查并排除限制竞争内容。
+    evidence_required:
+      - 公平竞争审查表/审查意见
+    exception: 依法适用公平竞争审查例外规定的情形（需说明理由）。
+    source_url: null
+    pending_fields:
+      - law_basis_article
+      - effective_date
+
+  - rule_id: NAT-G-01
+    dimension: G
+    title: 营商环境与市场准入风险
+    risk_type: 不合理限制市场准入/地方保护
+    severity: high
+    law_basis: 《优化营商环境条例》
+    law_basis_article: null
+    region: 全国
+    effective_date: null
+    condition: 检查是否存在不合理限制市场准入、地方保护或歧视性规定。
+    evidence_required:
+      - 涉及市场准入事项的依据与必要性说明
+    exception: 依据法律、行政法规对特定领域设定的准入条件。
+    source_url: null
+    pending_fields:
+      - law_basis_article
+      - effective_date
+
+  - rule_id: NAT-H-01
+    dimension: H
+    title: 法律依据时效性
+    risk_type: 依据已废止/失效/修订
+    severity: high
+    law_basis: 《中华人民共和国立法法》
+    law_basis_article: null
+    region: 全国
+    effective_date: null
+    condition: 识别引用依据是否已废止、失效、被修订、尚未施行或适用地区错误。
+    evidence_required:
+      - 全部引用依据清单（含条号）
+    exception: 明确按新旧法衔接规则适用的过渡条款。
+    source_url: null
+    pending_fields:
+      - law_basis_article
+      - effective_date
+
+  - rule_id: NAT-I-01
+    dimension: I
+    title: 文件形式与条款规范
+    risk_type: 形式不规范
+    severity: medium
+    law_basis: 《党政机关公文处理工作条例》
+    law_basis_article: null
+    region: 全国
+    effective_date: null
+    condition: 检查文件结构、条款表达、编号、引用与必要形式要素是否规范。
+    evidence_required:
+      - 文件正式文本（含发文形式与编号）
+    exception: 无（形式规范为普遍要求）。
+    source_url: null
+    pending_fields:
+      - law_basis_article
+      - effective_date

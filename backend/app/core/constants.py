@@ -323,3 +323,98 @@ class SourceAuthorizationStatus(StrEnum):
     RESTRICTED = "restricted"    # 受限（需授权/登录）
     PROHIBITED = "prohibited"    # 禁止抓取
     UNKNOWN = "unknown"          # 未核实
+
+
+# ============== 规范性文件合法性审核（Government Legal Review）==============
+class GovReviewDimension(StrEnum):
+    """审核维度 A~J（指令第六条）。每一维度对应一类审核规则。"""
+
+    AUTHORITY = "A"          # 制定主体与权限审核
+    SUPERIOR_LAW = "B"       # 上位法一致性审核
+    ADMIN_POWER = "C"        # 行政权力设定审核（许可/处罚/强制/征收/收费）
+    RIGHTS_DUTIES = "D"      # 权利义务审核（不得违法增义务/减权益）
+    PROCEDURE = "E"          # 程序合法性审核
+    FAIR_COMPETITION = "F"   # 公平竞争审查
+    BUSINESS_ENV = "G"       # 营商环境与市场准入风险
+    VALIDITY = "H"           # 法律依据时效性审核
+    FORMAL = "I"             # 文件形式与条款规范审核
+    LOCAL_RULE = "J"         # 地方特别规则审核
+
+
+GOV_DIMENSION_LABELS: dict[str, str] = {
+    GovReviewDimension.AUTHORITY: "制定主体与权限",
+    GovReviewDimension.SUPERIOR_LAW: "上位法一致性",
+    GovReviewDimension.ADMIN_POWER: "行政权力设定",
+    GovReviewDimension.RIGHTS_DUTIES: "权利义务",
+    GovReviewDimension.PROCEDURE: "程序合法性",
+    GovReviewDimension.FAIR_COMPETITION: "公平竞争审查",
+    GovReviewDimension.BUSINESS_ENV: "营商环境与市场准入",
+    GovReviewDimension.VALIDITY: "法律依据时效性",
+    GovReviewDimension.FORMAL: "文件形式与条款规范",
+    GovReviewDimension.LOCAL_RULE: "地方特别规则",
+}
+
+GOV_DIMENSION_ORDER: dict[str, int] = {
+    GovReviewDimension.AUTHORITY: 0,
+    GovReviewDimension.SUPERIOR_LAW: 1,
+    GovReviewDimension.ADMIN_POWER: 2,
+    GovReviewDimension.RIGHTS_DUTIES: 3,
+    GovReviewDimension.PROCEDURE: 4,
+    GovReviewDimension.FAIR_COMPETITION: 5,
+    GovReviewDimension.BUSINESS_ENV: 6,
+    GovReviewDimension.VALIDITY: 7,
+    GovReviewDimension.FORMAL: 8,
+    GovReviewDimension.LOCAL_RULE: 9,
+}
+
+
+class GovRiskLevel(StrEnum):
+    """规范性文件审核风险等级（5 档）。"""
+
+    CRITICAL = "critical"
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+    INFO = "info"
+
+
+GOV_RISK_LEVEL_LABELS: dict[str, str] = {
+    GovRiskLevel.CRITICAL: "重大风险",
+    GovRiskLevel.HIGH: "高风险",
+    GovRiskLevel.MEDIUM: "中风险",
+    GovRiskLevel.LOW: "低风险",
+    GovRiskLevel.INFO: "提示",
+}
+
+GOV_RISK_LEVEL_ORDER: dict[str, int] = {
+    GovRiskLevel.CRITICAL: 0,
+    GovRiskLevel.HIGH: 1,
+    GovRiskLevel.MEDIUM: 2,
+    GovRiskLevel.LOW: 3,
+    GovRiskLevel.INFO: 4,
+}
+
+
+class GovReviewConclusion(StrEnum):
+    """审核结论（指令原文 4 类，AI 辅助结果，非法定正式结论）。"""
+
+    NO_OBVIOUS_VIOLATION = "no_obvious_violation"  # 未发现明显违法问题
+    NEEDS_REVISION = "needs_revision"              # 存在需要修改的问题
+    MAJOR_RISK = "major_risk"                      # 存在重大合法性风险
+    INSUFFICIENT_BASIS = "insufficient_basis"      # 依据或材料不足，暂无法判断
+
+
+GOV_CONCLUSION_LABELS: dict[str, str] = {
+    GovReviewConclusion.NO_OBVIOUS_VIOLATION: "未发现明显违法问题",
+    GovReviewConclusion.NEEDS_REVISION: "存在需要修改的问题",
+    GovReviewConclusion.MAJOR_RISK: "存在重大合法性风险",
+    GovReviewConclusion.INSUFFICIENT_BASIS: "依据或材料不足，暂无法判断",
+}
+
+
+class GovRuleReviewStatus(StrEnum):
+    """规则包法律审核状态：地方规则包上线前需法律专业人员审核。"""
+
+    PENDING = "pending_legal_review"   # 待法律专业人员审核
+    REVIEWED = "reviewed"              # 已审核通过
+    DEPRECATED = "deprecated"          # 已废止
