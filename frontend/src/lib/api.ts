@@ -45,17 +45,7 @@ api.interceptors.request.use((config) => {
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
-    // 后端 get_actor 通过 X-User-Id / X-User-Role 头解析 actor（feedback / user_feedback 等端点用）
-    const userRaw = window.localStorage.getItem("lr_user");
-    if (userRaw) {
-      try {
-        const u = JSON.parse(userRaw) as { id?: string; role?: string };
-        if (u.id) config.headers["X-User-Id"] = u.id;
-        if (u.role) config.headers["X-User-Role"] = u.role;
-      } catch {
-        // ignore malformed
-      }
-    }
+    // 身份一律由 JWT 承载：禁止用 X-User-Id / X-User-Role 自报身份
   }
   return config;
 });
@@ -496,7 +486,18 @@ export async function createReview(
     );
     return data;
   } catch (err) {
-    throw new Error(errorMessage(err, "提交审查失败"));
+    const e = new Error(errorMessage(err, "提交审查失败")) as Error & {
+      code?: string;
+      status?: number;
+    };
+    if (axios.isAxiosError(err)) {
+      const data = err.response?.data as
+        | { error?: { code?: string } }
+        | undefined;
+      e.code = data?.error?.code;
+      e.status = err.response?.status;
+    }
+    throw e;
   }
 }
 

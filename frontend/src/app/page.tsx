@@ -3,6 +3,7 @@ import { ShieldCheck, ArrowRight, Check, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { PageViewTracker } from "@/components/analytics/PageViewTracker";
 import { siteInfo } from "@/lib/site";
 
 const steps = [
@@ -196,6 +197,7 @@ function DocPreview({ compact = false }: { compact?: boolean }) {
 export default function HomePage() {
   return (
     <div className="flex min-h-screen flex-col bg-white">
+      <PageViewTracker page="home" />
       {/* 顶栏 */}
       <header className="sticky top-0 z-30 border-b border-neutral-200/60 bg-white/90 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">

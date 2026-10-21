@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { UploadCloud, FileText, X } from "lucide-react";
 import { createReview } from "@/lib/api";
+import { track } from "@/lib/analytics";
+import { UpgradeDialog } from "@/components/billing/UpgradeDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -48,6 +50,7 @@ export function NewReviewForm({
   );
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [upgradeOpen, setUpgradeOpen] = React.useState(false);
   const [dragging, setDragging] = React.useState(false);
   const inputRef = React.useRef<HTMLInputElement>(null);
 
@@ -90,6 +93,12 @@ export function NewReviewForm({
       if (onSuccess) onSuccess(res.task_id);
       if (autoNavigate) router.push(`/review/${res.task_id}`);
     } catch (err) {
+      // 额度耗尽（后端 429 / quota_exceeded）→ 上报漏斗起点并弹出升级引导
+      const quotaErr = err as { code?: string; status?: number };
+      if (quotaErr?.code === "quota_exceeded" || quotaErr?.status === 429) {
+        track("quota_exhausted", { source: "upload" });
+        setUpgradeOpen(true);
+      }
       setError(err instanceof Error ? err.message : "提交失败");
     } finally {
       setLoading(false);
@@ -203,6 +212,12 @@ export function NewReviewForm({
           {loading ? "提交中…" : "提交并开始审查"}
         </Button>
       </div>
+
+      <UpgradeDialog
+        open={upgradeOpen}
+        onOpenChange={setUpgradeOpen}
+        source="upload"
+      />
     </form>
   );
 }

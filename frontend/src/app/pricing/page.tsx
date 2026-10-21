@@ -80,6 +80,27 @@ const planLabels: Record<PlanTier, string> = {
   enterprise: "企业版",
 };
 
+/** 套餐对比表（R2-5）：只列产品真实具备的能力。 */
+const compareRows: { label: string; free: string; pro: string; enterprise: string }[] = [
+  { label: "审查次数", free: "2 次体验", pro: "不限次数", enterprise: "不限次数" },
+  {
+    label: "法规库范围",
+    free: "国家法律 + 行政法规",
+    pro: "全量法规库（含地方性法规）",
+    enterprise: "全量 + 自定义法规",
+  },
+  {
+    label: "审查报告",
+    free: "标准报告在线查看",
+    pro: "深度报告 + 修改建议",
+    enterprise: "深度报告 + 修改建议",
+  },
+  { label: "Word 导出归档", free: "支持", pro: "支持", enterprise: "支持" },
+  { label: "团队账号", free: "—", pro: "—", enterprise: "最多 50 人" },
+  { label: "支持响应", free: "—", pro: "工作日 8h 响应", enterprise: "专属客户经理" },
+  { label: "私有化部署", free: "—", pro: "—", enterprise: "支持" },
+];
+
 export default function PricingPage() {
   const { data: pricing, isLoading } = useQuery({
     queryKey: ["pricing"],
@@ -187,6 +208,11 @@ export default function PricingPage() {
                   / {proSelected ? periodUnit(proSelected.period_days) : "月"}
                 </span>
               </div>
+              <p className="mt-1 h-4 text-xs text-neutral-500">
+                {proSelected && proSelected.period_days !== 30
+                  ? `折合 ¥${(proSelected.amount_cny / (proSelected.period_days / 30)).toFixed(1)} / 月`
+                  : ""}
+              </p>
               <div className="mt-3 flex gap-2">
                 {proItems.map((item) => (
                   <Button
@@ -232,6 +258,11 @@ export default function PricingPage() {
                   </>
                 )}
               </div>
+              <p className="mt-1 h-4 text-xs text-neutral-500">
+                {entSelected && entSelected.period_days !== 30
+                  ? `折合 ¥${(entSelected.amount_cny / (entSelected.period_days / 30)).toFixed(1)} / 月`
+                  : ""}
+              </p>
               <div className="mt-3 flex gap-2">
                 {enterpriseItems.map((item) => (
                   <Button
@@ -261,6 +292,42 @@ export default function PricingPage() {
             </CardFooter>
           </Card>
         </div>
+
+        {/* 套餐对比表 */}
+        <section className="mt-16" aria-labelledby="compare-title">
+          <h2
+            id="compare-title"
+            className="text-center font-display text-2xl font-semibold tracking-tight text-neutral-900"
+          >
+            套餐能力对比
+          </h2>
+          <div className="mt-6 overflow-x-auto rounded-xl border border-neutral-200/70">
+            <table className="w-full min-w-[640px] border-collapse text-sm">
+              <thead>
+                <tr className="bg-neutral-50 text-neutral-600">
+                  <th className="px-4 py-3 text-left font-medium">能力</th>
+                  <th className="px-4 py-3 text-center font-medium">体验版</th>
+                  <th className="px-4 py-3 text-center font-medium text-brand-700">专业版</th>
+                  <th className="px-4 py-3 text-center font-medium">企业版</th>
+                </tr>
+              </thead>
+              <tbody>
+                {compareRows.map((row) => (
+                  <tr key={row.label} className="border-t border-neutral-100">
+                    <td className="px-4 py-3 text-neutral-700">{row.label}</td>
+                    <td className="px-4 py-3 text-center text-neutral-500">{row.free}</td>
+                    <td className="px-4 py-3 text-center font-medium text-neutral-900">
+                      {row.pro}
+                    </td>
+                    <td className="px-4 py-3 text-center text-neutral-600">
+                      {row.enterprise}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
 
         <div className="mt-16 text-center text-sm text-neutral-500">
           <p className="flex items-center justify-center gap-1.5">

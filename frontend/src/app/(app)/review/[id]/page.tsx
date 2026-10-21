@@ -5,8 +5,6 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import {
-  AlertCircle,
-  Lightbulb,
   ShieldAlert,
   PanelRight,
   PanelRightClose,
@@ -22,7 +20,6 @@ import {
 } from "@/lib/api";
 import { useAuthStore } from "@/lib/auth";
 import { useQueryClient } from "@tanstack/react-query";
-import { subscribeReviewStream } from "@/lib/sse";
 import type { Evidence, ParagraphItem, ReviewNode, RiskItem } from "@/types/api";
 import { NodeFlowChart } from "@/components/review/NodeFlowChart";
 import { RiskList } from "@/components/review/RiskList";
@@ -74,8 +71,6 @@ export default function ReviewPage() {
   const [nodes, setNodes] = React.useState<ReviewNode[]>([]);
   const [risks, setRisks] = React.useState<RiskItem[]>([]);
   const [evidence, setEvidence] = React.useState<Evidence[]>([]);
-  const [suggestions, setSuggestions] = React.useState<string[]>([]);
-  const [sseError, setSseError] = React.useState<string | null>(null);
 
   // 3 栏：左节点流 / 中正文+批注 / 右证据
   const [leftOpen, setLeftOpen] = React.useState(true);
@@ -205,64 +200,6 @@ export default function ReviewPage() {
   const completed = !!report;
 
   React.useEffect(() => {
-    if (!id || !token) return;
-    setSseError(null);
-    const unsubscribe = subscribeReviewStream(id, {
-      token,
-      onEvent: (ev) => {
-        switch (ev.type) {
-          case "node_start":
-            setNodes((prev) =>
-              upsertNode(prev, {
-                id: ev.node_id,
-                name: ev.node_name,
-                label: ev.node_name,
-                status: "running",
-                started_at: ev.ts,
-              }),
-            );
-            break;
-          case "node_finish":
-            setNodes((prev) =>
-              upsertNode(prev, {
-                id: ev.node_id,
-                name: ev.node_name,
-                label: ev.node_name,
-                status: "done",
-                finished_at: ev.ts,
-                detail: ev.detail,
-              }),
-            );
-            break;
-          case "risk_found":
-            setRisks((prev) => [...prev, ev.risk]);
-            break;
-          case "evidence":
-            setEvidence((prev) => [...prev, ev.evidence]);
-            break;
-          case "suggestion":
-            setSuggestions((prev) => [...prev, ev.suggestion]);
-            break;
-          case "complete":
-            qc.invalidateQueries({ queryKey: ["reviews"] });
-            qc.invalidateQueries({ queryKey: ["review", ev.review_id] });
-            qc.invalidateQueries({ queryKey: ["review-status", ev.review_id] });
-            qc.invalidateQueries({ queryKey: ["report", ev.review_id] });
-            qc.invalidateQueries({
-              queryKey: ["review-documents", ev.review_id],
-            });
-            break;
-          case "error":
-            setSseError(ev.message);
-            break;
-        }
-      },
-      onError: () => setSseError("实时连接中断，可刷新重试"),
-    });
-    return unsubscribe;
-  }, [id, token, qc]);
-
-  React.useEffect(() => {
     if (!report) return;
     if (report.risks?.length) setRisks(report.risks);
     if (report.evidences?.length) setEvidence(report.evidences);
@@ -356,28 +293,6 @@ export default function ReviewPage() {
                 </div>
               </CardContent>
             </Card>
-            {suggestions.length > 0 && (
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-1.5 text-sm">
-                    <Lightbulb className="h-3.5 w-3.5 text-amber-500" /> 修改建议
-                    <TrustBadge kind="ai" className="ml-1" />
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ul className="flex flex-col gap-2">
-                    {suggestions.map((s, i) => (
-                      <li
-                        key={i}
-                        className="rounded-md bg-amber-50 p-2 text-xs text-gray-700"
-                      >
-                        {s}
-                      </li>
-                    ))}
-                  </ul>
-                </CardContent>
-              </Card>
-            )}
           </>
         ) : null}
       </aside>
@@ -435,12 +350,6 @@ export default function ReviewPage() {
             )}
           </div>
         </div>
-
-        {sseError && (
-          <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-700">
-            <AlertCircle className="h-4 w-4" /> {sseError}
-          </div>
-        )}
 
         {/* 风险清单（可滚动区） */}
         <Card>
@@ -626,12 +535,4 @@ function RiskCardBody({
       )}
     </div>
   );
-}
-
-function upsertNode(prev: ReviewNode[], node: ReviewNode): ReviewNode[] {
-  const idx = prev.findIndex((n) => n.id === node.id);
-  if (idx === -1) return [...prev, node];
-  const next = [...prev];
-  next[idx] = { ...next[idx], ...node };
-  return next;
 }
