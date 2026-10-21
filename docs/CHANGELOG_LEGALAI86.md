@@ -182,8 +182,45 @@
   （后端已就绪的模块待补前端页面后解锁入口）；Context Panel 需各页面按需注册内容。
 - 技术债：CI 缺前端 typecheck/lint 与 E2E；`analytics_events` 等历史索引漂移需单独迁移清理。
 - PHASE 1-7 文档集：**已补齐**（见上节）。文档核出的待改项（如实记录，未修）：
-  - 鉴权偏离：`legal` / `eval` / `feedback` / `admin-user-feedback` 仍用 `X-User-Id`/`X-User-Role`
-    （`get_actor`），`audit` / `metrics` 无鉴权，与「用户面必须 JWT」约定不符。
-  - 租户隔离缺口：`notifications` / `feedback` 未接入 `organization_id` 过滤
-    （`docs/rectification/00_ISSUE_REGISTER.md` R2-2）。
-  - 前端引用但后端未实现：`frontend/src/lib/sse.ts` 调用 `/tasks/{id}/stream`；`GET /auth/quota` 冻结 501。
+  - 鉴权偏离：**已修复**（PHASE 1-8，`legal` / `eval` / `feedback` / `admin-user-feedback`
+    改为 JWT）；仍余 `audit` / `metrics` 鉴权待定。
+  - 租户隔离缺口：**已修复**（PHASE 1-8，R2-2）。
+  - 前端引用但后端未实现：**已修复**（PHASE 1-8，删除 `sse.ts`）；`GET /auth/quota` 仍冻结 501。
+
+---
+
+## PHASE 1-8 — R1/R2 整改收口（2026-10-21）
+
+台账：`docs/rectification/00_ISSUE_REGISTER.md`（逐任务含代码证据与测试证据）。
+
+### 新增/修复
+
+- **R1-2 额度耗尽升级引导**：`createReview()` 抛错携带 `code`/`status`；
+  `NewReviewForm` 捕获 `quota_exceeded`/429 → `quota_exhausted` 埋点 + `UpgradeDialog`
+  （弹层 `upgrade_dialog_view` → CTA `upgrade_click` → /pricing）。
+- **R1-3 task_completed 埋点**：新增 `services/analytics_sink.py`；工作流收尾独立 session 写库，
+  仅 `report_generation` 完成才计，写入失败不影响任务状态。
+- **R2-1 账户锁定**：连续密码错误 5 次锁定 15 分钟；锁定期间正确密码亦拒绝；
+  成功登录清零；`_as_utc` 兼容 naive datetime；落库失败 best-effort。
+- **R2-2 多租户隔离**：`notifications.organization_id` NOT NULL 但 create 从未写入 ——
+  线上通知插入一直被静默回滚（通知中心实际为空）；现按收件人组织推导并透传。
+  `user_feedback` 同病修复；管理端 admin/super_admin 全量、supervisor 限本组织。
+- **安全偏差**：`feedback` / `eval` / `legal` / `admin_user_feedback` 由
+  `X-User-Id`/`X-User-Role` 自报身份改为 JWT `get_current_user` / `require_role`；
+  前端 axios 拦截器删除身份头注入。
+- **SSE 假端点**：删除 `frontend/src/lib/sse.ts`（后端无 `/tasks/{id}/stream`，
+  每次进审查页都报「实时连接中断」）；进度继续由 3 秒状态轮询驱动。
+- **R2-3 SEO**：`app/sitemap.ts`、`app/robots.ts`、`/solutions/sifaju` 落地页。
+- **R2-4/R2-5**：首页与方案页 `page_view`；定价页套餐对比表 + 季付/年付折算月价。
+
+### 测试与门禁（实测）
+
+- 新增 `tests/test_lockout_and_analytics.py`（9 例）。
+- ruff 全绿；mypy（项目配置，111 文件）全绿；pytest **551 passed / 27 skipped**；
+  `tsc --noEmit` 0 错误；`next build` 成功（新增 robots/sitemap/solutions 路由）。
+
+### 仍阻塞（如实标注）
+
+- R1-4 合规字段（统一社会信用代码 / 办公地址 / 公安备案号 / 政策生效日）需运营方提供，
+  代码不代填。
+- `audit` / `metrics` 端点鉴权、`GET /auth/quota` 冻结 501：本轮未做。
