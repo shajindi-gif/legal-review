@@ -6,10 +6,10 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_actor, get_audit_service, get_db
+from app.api.deps import client_ip, get_audit_service, get_current_user, get_db
 from app.core.constants import AuditAction
 from app.schemas.eval import (
     FeedbackBatchReviewResponse,
@@ -17,6 +17,7 @@ from app.schemas.eval import (
     FeedbackRead,
 )
 from app.services.audit import AuditService
+from app.services.core_auth_client import CorePrincipal
 from app.services.feedback import FeedbackCaseService
 
 router = APIRouter(prefix="/feedback", tags=["feedback"])
@@ -37,27 +38,16 @@ def get_feedback_service(
 async def submit_feedback(
     task_id: UUID,
     req: FeedbackCreate,
+    request: Request,
     service: FeedbackCaseService = Depends(get_feedback_service),
     audit: AuditService = Depends(get_audit_service),
-    actor: dict = Depends(get_actor),
+    current_user: CorePrincipal = Depends(get_current_user),
 ) -> FeedbackRead:
     """提交人工反馈（FR-032 人工闭环）。
 
-    请求头需携带 X-User-Id 作为 reviewer_id。
+    reviewer_id 直接取自 JWT 鉴权后的当前用户，不再信任请求头自报身份。
     """
-    reviewer_id_str = actor.get("user_id")
-    if not reviewer_id_str:
-        from app.core.errors import ValidationError
-
-        raise ValidationError("缺少 reviewer_id（X-User-Id 请求头）")
-
-    try:
-        reviewer_id = UUID(reviewer_id_str)
-    except ValueError as e:
-        from app.core.errors import ValidationError
-
-        raise ValidationError(f"reviewer_id 格式非法: {reviewer_id_str}") from e
-
+    reviewer_id = current_user.id
     case = await service.record(
         task_id=task_id,
         reviewer_id=reviewer_id,
@@ -66,14 +56,14 @@ async def submit_feedback(
     await audit.log(
         action=AuditAction.REVIEW,
         actor_id=reviewer_id,
-        actor_role=actor.get("role"),
+        actor_role=str(current_user.role),
         target_type="feedback_case",
         target_id=case.id,
         after_value={
             "agent_name": case.agent_name,
             "reason_category": case.reason_category,
         },
-        ip_address=actor.get("ip"),
+        ip_address=client_ip(request),
     )
     return FeedbackCaseService.to_read(case)
 
@@ -115,23 +105,24 @@ async def batch_review(
 )
 async def mark_incorporated(
     case_id: UUID,
+    request: Request,
     prompt_version_after: str = Query(..., min_length=1, max_length=32),
     service: FeedbackCaseService = Depends(get_feedback_service),
     audit: AuditService = Depends(get_audit_service),
-    actor: dict = Depends(get_actor),
+    current_user: CorePrincipal = Depends(get_current_user),
 ) -> FeedbackRead:
     """标记反馈已被 Prompt 优化吸收。"""
     case = await service.mark_incorporated(case_id, prompt_version_after)
     await audit.log(
         action=AuditAction.MODIFY,
-        actor_id=actor.get("user_id"),
-        actor_role=actor.get("role"),
+        actor_id=current_user.id,
+        actor_role=str(current_user.role),
         target_type="feedback_case",
         target_id=case.id,
         after_value={
             "incorporated": True,
             "prompt_version_after": prompt_version_after,
         },
-        ip_address=actor.get("ip"),
+        ip_address=client_ip(request),
     )
     return FeedbackCaseService.to_read(case)

@@ -25,7 +25,7 @@ import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
-from app.api.deps import get_actor, get_audit_service, get_db
+from app.api.deps import get_audit_service, get_current_user, get_db
 from app.api.v1.legal import (
     get_legal_library_service,
     get_rag_service,
@@ -42,6 +42,19 @@ from app.schemas.legal import (
     RAGSearchResponse,
     RAGSearchResultItem,
 )
+from app.services.core_auth_client import CorePrincipal
+
+
+def _principal(role: str = "librarian") -> CorePrincipal:
+    """JWT 解析出的请求主体（不再用 X-User-Id 自报身份）。"""
+    return CorePrincipal(
+        id=uuid4(),
+        tenant_id=None,
+        email="librarian@example.com",
+        full_name="测试法规管理员",
+        role=role,
+        is_active=True,
+    )
 
 
 # ============== 测试 app ==============
@@ -50,7 +63,7 @@ def _make_test_app(
     library_service: Any = None,
     rag_service: Any = None,
     audit_service: Any = None,
-    actor: dict | None = None,
+    user: CorePrincipal | None = None,
 ) -> FastAPI:
     """构造独立测试 app（只挂 legal router）。"""
     app = FastAPI()
@@ -66,8 +79,8 @@ def _make_test_app(
         app.dependency_overrides[get_rag_service] = _get_rag
     if audit_service is not None:
         app.dependency_overrides[get_audit_service] = lambda: audit_service
-    if actor is not None:
-        app.dependency_overrides[get_actor] = lambda: actor
+    if user is not None:
+        app.dependency_overrides[get_current_user] = lambda: user
 
     # 拦截 db 依赖（实际不会用）
     async def _get_db_override():
@@ -108,7 +121,7 @@ async def test_create_law_returns_201() -> None:
 
     app = _make_test_app(
         library_service=lib, audit_service=audit,
-        actor={"user_id": "u1", "role": "librarian", "ip": "127.0.0.1"},
+        user=_principal(),
     )
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
@@ -163,7 +176,7 @@ async def test_create_law_returns_clause_count() -> None:
 
     app = _make_test_app(
         library_service=lib, audit_service=MagicMock(log=AsyncMock()),
-        actor={"user_id": "u1", "role": "librarian", "ip": "127.0.0.1"},
+        user=_principal(),
     )
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
@@ -192,7 +205,7 @@ async def test_import_batch_success() -> None:
 
     app = _make_test_app(
         library_service=lib, audit_service=audit,
-        actor={"user_id": "u1", "role": "librarian", "ip": "127.0.0.1"},
+        user=_principal(),
     )
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
@@ -230,7 +243,7 @@ async def test_import_batch_with_failures() -> None:
 
     app = _make_test_app(
         library_service=lib, audit_service=MagicMock(log=AsyncMock()),
-        actor={"user_id": "u1", "role": "librarian", "ip": "127.0.0.1"},
+        user=_principal(),
     )
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
@@ -381,7 +394,7 @@ async def test_update_status_returns_200() -> None:
 
     app = _make_test_app(
         library_service=lib, audit_service=MagicMock(log=AsyncMock()),
-        actor={"user_id": "u1", "role": "admin", "ip": "127.0.0.1"},
+        user=_principal("admin"),
     )
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
@@ -482,7 +495,7 @@ async def test_get_law_not_found_returns_404() -> None:
         yield MagicMock()
     app.dependency_overrides[get_db] = _get_db_override
     app.dependency_overrides[get_audit_service] = lambda: MagicMock(log=AsyncMock())
-    app.dependency_overrides[get_actor] = lambda: {"user_id": None, "role": None, "ip": None}
+    app.dependency_overrides[get_current_user] = lambda: _principal()
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
         resp = await client.get(f"/api/v1/legal/laws/{uuid4()}")
@@ -499,7 +512,7 @@ async def test_create_law_validation_error() -> None:
     """请求体不符合 LegalDocumentCreate schema → 422。"""
     app = _make_test_app(
         library_service=MagicMock(), audit_service=MagicMock(log=AsyncMock()),
-        actor={"user_id": "u1", "role": "librarian", "ip": "127.0.0.1"},
+        user=_principal(),
     )
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:

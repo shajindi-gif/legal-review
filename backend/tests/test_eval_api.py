@@ -13,7 +13,7 @@ import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
-from app.api.deps import get_actor, get_audit_service, get_db
+from app.api.deps import get_audit_service, get_current_user, get_db
 from app.api.v1.eval import get_eval_runner, get_golden_dataset_service
 from app.api.v1.eval import router as eval_router
 from app.core.errors import NotFoundError, ValidationError
@@ -22,6 +22,19 @@ from app.schemas.eval import (
     GoldenBatchImportResponse,
     GoldenCaseRead,
 )
+from app.services.core_auth_client import CorePrincipal
+
+
+def _principal(role: str = "admin") -> CorePrincipal:
+    """JWT 解析出的请求主体（不再用 X-User-Id 自报身份）。"""
+    return CorePrincipal(
+        id=uuid4(),
+        tenant_id=None,
+        email="admin@example.com",
+        full_name="测试管理员",
+        role=role,
+        is_active=True,
+    )
 
 
 def _make_test_app(
@@ -29,7 +42,7 @@ def _make_test_app(
     dataset_service: Any = None,
     eval_runner: Any = None,
     audit_service: Any = None,
-    actor: dict | None = None,
+    user: CorePrincipal | None = None,
 ) -> FastAPI:
     app = FastAPI()
     app.include_router(eval_router)
@@ -44,8 +57,8 @@ def _make_test_app(
         app.dependency_overrides[get_eval_runner] = _get_runner
     if audit_service is not None:
         app.dependency_overrides[get_audit_service] = lambda: audit_service
-    if actor is not None:
-        app.dependency_overrides[get_actor] = lambda: actor
+    if user is not None:
+        app.dependency_overrides[get_current_user] = lambda: user
 
     async def _get_db_override():
         yield MagicMock()
@@ -98,7 +111,7 @@ async def test_batch_import_golden_success() -> None:
     app = _make_test_app(
         dataset_service=ds,
         audit_service=MagicMock(log=AsyncMock()),
-        actor={"user_id": "u1", "role": "admin", "ip": "127.0.0.1"},
+        user=_principal(),
     )
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
@@ -144,7 +157,7 @@ async def test_create_golden_case_success() -> None:
     app = _make_test_app(
         dataset_service=ds,
         audit_service=MagicMock(log=AsyncMock()),
-        actor={"user_id": "u1", "role": "admin", "ip": "127.0.0.1"},
+        user=_principal(),
     )
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
@@ -176,9 +189,7 @@ async def test_create_golden_case_import_failed() -> None:
         yield ds
     app.dependency_overrides[get_golden_dataset_service] = _get_ds
     app.dependency_overrides[get_audit_service] = lambda: MagicMock(log=AsyncMock())
-    app.dependency_overrides[get_actor] = lambda: {
-        "user_id": "u1", "role": "admin", "ip": "127.0.0.1",
-    }
+    app.dependency_overrides[get_current_user] = lambda: _principal()
     async def _get_db_override():
         yield MagicMock()
     app.dependency_overrides[get_db] = _get_db_override
@@ -296,7 +307,7 @@ async def test_delete_golden_case_success() -> None:
     app = _make_test_app(
         dataset_service=ds,
         audit_service=MagicMock(log=AsyncMock()),
-        actor={"user_id": "u1", "role": "admin", "ip": "127.0.0.1"},
+        user=_principal(),
     )
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
@@ -346,7 +357,7 @@ async def test_trigger_eval_run_success() -> None:
     app = _make_test_app(
         eval_runner=runner,
         audit_service=MagicMock(log=AsyncMock()),
-        actor={"user_id": "u1", "role": "admin", "ip": "127.0.0.1"},
+        user=_principal(),
     )
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
@@ -373,9 +384,7 @@ async def test_trigger_eval_run_empty_dataset() -> None:
         yield runner
     app.dependency_overrides[get_eval_runner] = _get_runner
     app.dependency_overrides[get_audit_service] = lambda: MagicMock(log=AsyncMock())
-    app.dependency_overrides[get_actor] = lambda: {
-        "user_id": "u1", "role": "admin", "ip": "127.0.0.1",
-    }
+    app.dependency_overrides[get_current_user] = lambda: _principal()
     async def _get_db_override():
         yield MagicMock()
     app.dependency_overrides[get_db] = _get_db_override

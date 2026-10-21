@@ -1,29 +1,48 @@
 """反馈 API 测试 - Sprint 5 / FR-032。
 
 策略：用独立 FastAPI app 只挂 feedback router，通过 dependency_overrides 注入 mock。
+
+鉴权口径（安全整改后）：reviewer 身份来自 JWT 解析出的 CorePrincipal，
+不再接受 X-User-Id / X-User-Role 请求头自报身份。
 """
 from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
-from app.api.deps import get_actor, get_audit_service, get_db
+from app.api.deps import get_audit_service, get_current_user, get_db
 from app.api.v1.feedback import get_feedback_service
 from app.api.v1.feedback import router as feedback_router
 from app.core.errors import NotFoundError, ValidationError
+from app.services.core_auth_client import CorePrincipal
+
+
+def _principal(
+    *,
+    user_id: UUID | None = None,
+    role: str = "reviewer",
+) -> CorePrincipal:
+    return CorePrincipal(
+        id=user_id or uuid4(),
+        tenant_id=None,
+        email="reviewer@example.com",
+        full_name="测试审查员",
+        role=role,
+        is_active=True,
+    )
 
 
 def _make_test_app(
     *,
     feedback_service: Any = None,
     audit_service: Any = None,
-    actor: dict | None = None,
+    user: CorePrincipal | None = None,
 ) -> FastAPI:
     app = FastAPI()
     app.include_router(feedback_router)
@@ -34,8 +53,8 @@ def _make_test_app(
         app.dependency_overrides[get_feedback_service] = _get_fb
     if audit_service is not None:
         app.dependency_overrides[get_audit_service] = lambda: audit_service
-    if actor is not None:
-        app.dependency_overrides[get_actor] = lambda: actor
+    if user is not None:
+        app.dependency_overrides[get_current_user] = lambda: user
 
     async def _get_db_override():
         yield MagicMock()
@@ -76,7 +95,7 @@ async def test_submit_feedback_success() -> None:
     app = _make_test_app(
         feedback_service=svc,
         audit_service=MagicMock(log=AsyncMock()),
-        actor={"user_id": str(case.reviewer_id), "role": "reviewer", "ip": "127.0.0.1"},
+        user=_principal(user_id=case.reviewer_id),
     )
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
@@ -94,11 +113,13 @@ async def test_submit_feedback_success() -> None:
     assert body["agent_name"] == "content_review"
     assert body["incorporated"] is False
     svc.record.assert_awaited()
+    # reviewer_id 必须取自 JWT 主体，而非请求头
+    assert svc.record.await_args.kwargs["reviewer_id"] == case.reviewer_id
 
 
 @pytest.mark.asyncio
-async def test_submit_feedback_missing_reviewer_id() -> None:
-    """X-User-Id 缺失 → ValidationError → 422。"""
+async def test_submit_feedback_without_jwt_returns_401() -> None:
+    """缺少 Authorization 头 → 401，不再接受 X-User-Id 自报身份。"""
     from app.main import create_app
 
     svc = MagicMock()
@@ -109,54 +130,25 @@ async def test_submit_feedback_missing_reviewer_id() -> None:
         yield svc
     app.dependency_overrides[get_feedback_service] = _get_fb
     app.dependency_overrides[get_audit_service] = lambda: MagicMock(log=AsyncMock())
-    app.dependency_overrides[get_actor] = lambda: {
-        "user_id": None, "role": "reviewer", "ip": "127.0.0.1",
-    }
     async def _get_db_override():
         yield MagicMock()
     app.dependency_overrides[get_db] = _get_db_override
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
-        resp = await client.post(f"/api/v1/feedback/tasks/{uuid4()}", json={
-            "agent_name": "x",
-            "ai_output": {"a": 1},
-            "human_modified": {"b": 2},
-            "modify_reason": "test",
-        })
+        resp = await client.post(
+            f"/api/v1/feedback/tasks/{uuid4()}",
+            headers={"X-User-Id": str(uuid4()), "X-User-Role": "reviewer"},
+            json={
+                "agent_name": "x",
+                "ai_output": {"a": 1},
+                "human_modified": {"b": 2},
+                "modify_reason": "test",
+            },
+        )
 
-    assert resp.status_code == 422
-    assert resp.json()["error"]["code"] == "validation_error"
-
-
-@pytest.mark.asyncio
-async def test_submit_feedback_invalid_reviewer_id() -> None:
-    """X-User-Id 非 UUID → ValidationError → 422。"""
-    from app.main import create_app
-
-    svc = MagicMock()
-    svc.record = AsyncMock()
-
-    app = create_app()
-    async def _get_fb():
-        yield svc
-    app.dependency_overrides[get_feedback_service] = _get_fb
-    app.dependency_overrides[get_audit_service] = lambda: MagicMock(log=AsyncMock())
-    app.dependency_overrides[get_actor] = lambda: {
-        "user_id": "not-a-uuid", "role": "reviewer", "ip": "127.0.0.1",
-    }
-    async def _get_db_override():
-        yield MagicMock()
-    app.dependency_overrides[get_db] = _get_db_override
-
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
-        resp = await client.post(f"/api/v1/feedback/tasks/{uuid4()}", json={
-            "agent_name": "x",
-            "ai_output": {"a": 1},
-            "human_modified": {"b": 2},
-            "modify_reason": "test",
-        })
-
-    assert resp.status_code == 422
+    assert resp.status_code == 401
+    assert resp.json()["error"]["code"] == "auth_error"
+    svc.record.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -172,9 +164,7 @@ async def test_submit_feedback_same_output_raises() -> None:
         yield svc
     app.dependency_overrides[get_feedback_service] = _get_fb
     app.dependency_overrides[get_audit_service] = lambda: MagicMock(log=AsyncMock())
-    app.dependency_overrides[get_actor] = lambda: {
-        "user_id": str(uuid4()), "role": "reviewer", "ip": "127.0.0.1",
-    }
+    app.dependency_overrides[get_current_user] = lambda: _principal()
     async def _get_db_override():
         yield MagicMock()
     app.dependency_overrides[get_db] = _get_db_override
@@ -264,7 +254,7 @@ async def test_mark_incorporated_success() -> None:
     app = _make_test_app(
         feedback_service=svc,
         audit_service=MagicMock(log=AsyncMock()),
-        actor={"user_id": str(case.reviewer_id), "role": "admin", "ip": "127.0.0.1"},
+        user=_principal(role="admin"),
     )
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
@@ -291,9 +281,7 @@ async def test_mark_incorporated_not_found() -> None:
         yield svc
     app.dependency_overrides[get_feedback_service] = _get_fb
     app.dependency_overrides[get_audit_service] = lambda: MagicMock(log=AsyncMock())
-    app.dependency_overrides[get_actor] = lambda: {
-        "user_id": str(uuid4()), "role": "admin", "ip": "127.0.0.1",
-    }
+    app.dependency_overrides[get_current_user] = lambda: _principal(role="admin")
     async def _get_db_override():
         yield MagicMock()
     app.dependency_overrides[get_db] = _get_db_override

@@ -6,10 +6,10 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_actor, get_audit_service, get_db
+from app.api.deps import client_ip, get_audit_service, get_current_user, get_db
 from app.core.constants import AuditAction, GoldenCategory
 from app.models.platform import EvalRun, GoldenDataset
 from app.schemas.eval import (
@@ -21,6 +21,7 @@ from app.schemas.eval import (
     GoldenCaseRead,
 )
 from app.services.audit import AuditService
+from app.services.core_auth_client import CorePrincipal
 from app.services.eval_runner import EvalRunner, GoldenDatasetService
 
 router = APIRouter(prefix="/eval", tags=["eval"])
@@ -86,9 +87,10 @@ def _to_run_read(run: EvalRun) -> EvalRunRead:
 )
 async def create_golden_case(
     req: GoldenCaseCreate,
+    request: Request,
     service: GoldenDatasetService = Depends(get_golden_dataset_service),
     audit: AuditService = Depends(get_audit_service),
-    actor: dict = Depends(get_actor),
+    actor: CorePrincipal = Depends(get_current_user),
 ) -> GoldenCaseRead:
     """新增单条 Golden Case（FR-029 评测集管理）。"""
     cases = await service.batch_import([req])
@@ -105,12 +107,12 @@ async def create_golden_case(
 
     await audit.log(
         action=AuditAction.CREATE,
-        actor_id=actor.get("user_id"),
-        actor_role=actor.get("role"),
+        actor_id=actor.id,
+        actor_role=str(actor.role),
         target_type="golden_case",
         target_id=latest.id,
         after_value={"case_name": latest.case_name, "category": latest.category},
-        ip_address=actor.get("ip"),
+        ip_address=client_ip(request),
     )
     return _to_read(latest)
 
@@ -122,23 +124,24 @@ async def create_golden_case(
 )
 async def batch_import_golden(
     req: GoldenBatchImportRequest,
+    request: Request,
     service: GoldenDatasetService = Depends(get_golden_dataset_service),
     audit: AuditService = Depends(get_audit_service),
-    actor: dict = Depends(get_actor),
+    actor: CorePrincipal = Depends(get_current_user),
 ) -> GoldenBatchImportResponse:
     """批量导入 Golden Cases（容错）。"""
     result = await service.batch_import(req.cases)
     await audit.log(
         action=AuditAction.CREATE,
-        actor_id=actor.get("user_id"),
-        actor_role=actor.get("role"),
+        actor_id=actor.id,
+        actor_role=str(actor.role),
         target_type="golden_dataset",
         after_value={
             "total": result.total,
             "success": result.success,
             "failed": result.failed,
         },
-        ip_address=actor.get("ip"),
+        ip_address=client_ip(request),
     )
     return result
 
@@ -168,19 +171,20 @@ async def get_golden_case(
 @router.delete("/golden/cases/{case_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_golden_case(
     case_id: UUID,
+    request: Request,
     service: GoldenDatasetService = Depends(get_golden_dataset_service),
     audit: AuditService = Depends(get_audit_service),
-    actor: dict = Depends(get_actor),
+    actor: CorePrincipal = Depends(get_current_user),
 ) -> None:
     """删除单条 Golden Case。"""
     await service.delete_case(case_id)
     await audit.log(
         action=AuditAction.DELETE,
-        actor_id=actor.get("user_id"),
-        actor_role=actor.get("role"),
+        actor_id=actor.id,
+        actor_role=str(actor.role),
         target_type="golden_case",
         target_id=case_id,
-        ip_address=actor.get("ip"),
+        ip_address=client_ip(request),
     )
 
 
@@ -200,9 +204,10 @@ async def count_golden_cases(
 )
 async def trigger_eval_run(
     req: EvalRunCreate,
+    request: Request,
     runner: EvalRunner = Depends(get_eval_runner),
     audit: AuditService = Depends(get_audit_service),
-    actor: dict = Depends(get_actor),
+    actor: CorePrincipal = Depends(get_current_user),
 ) -> EvalRunRead:
     """触发一次评测运行（FR-031 评测门控）。
 
@@ -215,8 +220,8 @@ async def trigger_eval_run(
     )
     await audit.log(
         action=AuditAction.REVIEW,
-        actor_id=actor.get("user_id"),
-        actor_role=actor.get("role"),
+        actor_id=actor.id,
+        actor_role=str(actor.role),
         target_type="eval_run",
         target_id=run.id,
         after_value={
@@ -224,7 +229,7 @@ async def trigger_eval_run(
             "prompt_version": run.prompt_version,
             "overall_pass": run.overall_pass,
         },
-        ip_address=actor.get("ip"),
+        ip_address=client_ip(request),
     )
     return _to_run_read(run)
 

@@ -93,6 +93,10 @@ PLAN_PRICING_CENTS: dict[str, dict[int, int]] = {
 # 免费版累计体验次数（用尽后需升级套餐，不再每日重置）
 FREE_TRIAL_LIMIT = 2
 
+# 账户锁定策略（R2-1）：连续密码错误达到阈值后锁定，到期自动解锁
+MAX_FAILED_LOGIN_ATTEMPTS = 5
+FAILED_LOGIN_LOCKOUT_MINUTES = 15
+
 # 各套餐开通后的审查配额（-1 = 不限；Free 走 FREE_TRIAL_LIMIT 累计体验计数）
 PLAN_QUOTA_DAILY: dict[str, int] = {
     PlanTier.PRO: -1,

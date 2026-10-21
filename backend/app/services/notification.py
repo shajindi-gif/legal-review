@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import NotFoundError
 from app.models.notification import Notification
+from app.models.user import User
 
 
 def _utcnow() -> datetime:
@@ -43,10 +44,20 @@ class NotificationService:
         task_id: UUID | None = None,
         link: str | None = None,
         payload: dict | None = None,
+        organization_id: UUID | None = None,
     ) -> Notification:
-        """插入一条通知。供 agent 节点钩子调用。"""
+        """插入一条通知。供 agent 节点钩子调用。
+
+        organization_id 是多租户隔离列（NOT NULL）：调用方未显式传入时，
+        按收件人所属组织的 organization_id 推导，避免写入 NULL 触发约束错误。
+        """
+        if organization_id is None:
+            organization_id = await self.session.scalar(
+                select(User.organization_id).where(User.id == recipient_id)
+            )
         notif = Notification(
             recipient_id=recipient_id,
+            organization_id=organization_id,
             kind=kind,
             title=title,
             body=body,

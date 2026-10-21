@@ -50,7 +50,11 @@ async def submit_feedback(
     service: UserFeedbackService = Depends(get_user_feedback_service),
 ) -> UserFeedbackRead:
     """提交一条用户反馈。"""
-    record = await service.create(user_id=current_user.id, payload=req)
+    record = await service.create(
+        user_id=current_user.id,
+        payload=req,
+        organization_id=current_user.organization_id,
+    )
     return UserFeedbackRead.model_validate(record)
 
 

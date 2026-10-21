@@ -14,7 +14,7 @@ JWT 结构（HS256）:
 from __future__ import annotations
 
 import hashlib
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 from uuid import UUID, uuid4
 
@@ -36,7 +36,15 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
-from app.core.constants import FREE_TRIAL_LIMIT, OrganizationType, PlanTier, UserRole, UserStatus
+from app.core.constants import (
+    FAILED_LOGIN_LOCKOUT_MINUTES,
+    FREE_TRIAL_LIMIT,
+    MAX_FAILED_LOGIN_ATTEMPTS,
+    OrganizationType,
+    PlanTier,
+    UserRole,
+    UserStatus,
+)
 from app.core.errors import AuthError, ConflictError, NotFoundError, ValidationError
 from app.models.identity import RefreshToken
 from app.models.user import Organization, User, UserPlan
@@ -57,7 +65,15 @@ except ImportError:  # noqa: BLE001
 
 
 _log = structlog.get_logger("auth.password")
+_lockout_log = structlog.get_logger("auth.lockout")
 _argon2_hasher = _Argon2PasswordHasher() if _HAS_ARGON2 else None
+
+
+def _as_utc(value: datetime | None) -> datetime | None:
+    """把 naive datetime 归一化为带时区的 UTC（兼容不同驱动返回）。"""
+    if value is None:
+        return None
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
 def hash_password(plain: str) -> str:
@@ -672,6 +688,8 @@ class AuthService:
         """统一身份密码登录：identifier 自动识别邮箱 / 手机号（本地账号）。
 
         防枚举：不存在与密码错误统一文案「邮箱/手机号或密码错误」。
+        账户锁定（R2-1）：连续密码错误达 MAX_FAILED_LOGIN_ATTEMPTS 次后锁定
+        FAILED_LOGIN_LOCKOUT_MINUTES 分钟；锁定期间即使密码正确也拒绝。
         """
         ident = identifier.strip()
         if "@" in ident:
@@ -682,7 +700,14 @@ class AuthService:
             user = await self._session.scalar(select(User).where(User.phone == phone_norm))
         if user is None or not user.password_hash:
             raise AuthError("账号或密码错误")
+
+        now = datetime.now(UTC)
+        locked_until = _as_utc(user.locked_until)
+        if locked_until is not None and locked_until > now:
+            raise AuthError("账号已被临时锁定，请稍后再试或通过重置密码解锁")
+
         if not verify_password(password, user.password_hash):
+            await self._register_failed_login(user, now=now)
             raise AuthError("账号或密码错误")
         if str(user.status) != str(UserStatus.ACTIVE):
             raise AuthError(f"账号状态异常: {user.status}")
@@ -690,11 +715,31 @@ class AuthService:
         new_hash = opportunistic_rehash(user, password)
         if new_hash is not None:
             user.password_hash = new_hash
-            user.password_changed_at = datetime.now(UTC).replace(tzinfo=None)
-        user.last_login_at = datetime.now(UTC).replace(tzinfo=None)
+            user.password_changed_at = now.replace(tzinfo=None)
+        user.last_login_at = now.replace(tzinfo=None)
+        user.failed_login_count = 0
+        user.locked_until = None
         await self._session.flush()
         await self._session.refresh(user, attribute_names=["plan"])
         return user
+
+    async def _register_failed_login(self, user: User, *, now: datetime) -> None:
+        """记录一次密码失败；达到阈值写入锁定到期时间（best-effort 落库）。
+
+        落库失败不应改变对外响应（仍以「账号或密码错误」返回），仅记日志。
+        """
+        try:
+            count = int(user.failed_login_count or 0) + 1
+            user.failed_login_count = count
+            if count >= MAX_FAILED_LOGIN_ATTEMPTS:
+                user.locked_until = now + timedelta(minutes=FAILED_LOGIN_LOCKOUT_MINUTES)
+            await self._session.flush()
+        except Exception as e:  # noqa: BLE001 - best-effort，绝不阻断登录失败响应
+            _lockout_log.warning(
+                "failed_login_count_write_failed",
+                user_id=str(getattr(user, "id", "")),
+                error=str(e),
+            )
 
     async def find_by_email(self, email: str) -> User | None:
         """按邮箱查找用户（内部用，不抛枚举信息）。"""

@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_actor, get_audit_service, get_db
+from app.api.deps import client_ip, get_audit_service, get_current_user, get_db
 from app.core.constants import AuditAction, LawLevel, LawStatus, LawType
 from app.schemas.citation import (
     CitationBatchRequest,
@@ -26,6 +26,7 @@ from app.schemas.legal import (
 )
 from app.services.audit import AuditService
 from app.services.citation_verifier import CitationVerifier, DbLawLookup
+from app.services.core_auth_client import CorePrincipal
 from app.services.legal_library import LegalLibraryService
 from app.tools.rag import RAGSearchService
 
@@ -55,9 +56,10 @@ def get_citation_verifier(session: AsyncSession = Depends(get_db)) -> CitationVe
 )
 async def import_laws(
     req: LegalLibraryImportRequest,
+    request: Request,
     service: LegalLibraryService = Depends(get_legal_library_service),
     audit: AuditService = Depends(get_audit_service),
-    actor: dict = Depends(get_actor),
+    actor: CorePrincipal = Depends(get_current_user),
 ) -> LegalLibraryImportResponse:
     """批量导入法规（FR-012 法规导入）。
 
@@ -68,15 +70,15 @@ async def import_laws(
 
     await audit.log(
         action=AuditAction.CREATE,
-        actor_id=actor.get("user_id"),
-        actor_role=actor.get("role"),
+        actor_id=actor.id,
+        actor_role=str(actor.role),
         target_type="legal_library",
         after_value={
             "total": result.total,
             "succeeded": result.succeeded,
             "failed": result.failed,
         },
-        ip_address=actor.get("ip"),
+        ip_address=client_ip(request),
     )
     return result
 
@@ -88,9 +90,10 @@ async def import_laws(
 )
 async def create_law(
     req: LegalDocumentCreate,
+    request: Request,
     service: LegalLibraryService = Depends(get_legal_library_service),
     audit: AuditService = Depends(get_audit_service),
-    actor: dict = Depends(get_actor),
+    actor: CorePrincipal = Depends(get_current_user),
 ) -> LegalDocumentRead:
     """导入单部法规（含切分与 embedding 索引）。"""
     law = await service.import_law(req)
@@ -98,12 +101,12 @@ async def create_law(
 
     await audit.log(
         action=AuditAction.CREATE,
-        actor_id=actor.get("user_id"),
-        actor_role=actor.get("role"),
+        actor_id=actor.id,
+        actor_role=str(actor.role),
         target_type="legal_document",
         target_id=law.id,
         after_value={"law_name": law.law_name, "version": law.version},
-        ip_address=actor.get("ip"),
+        ip_address=client_ip(request),
     )
 
     # 转 Read（clause_count 单独查）
@@ -190,10 +193,11 @@ async def check_validity(
 async def update_status(
     law_id: UUID,
     new_status: LawStatus,
+    request: Request,
     replaced_by_law_id: UUID | None = None,
     service: LegalLibraryService = Depends(get_legal_library_service),
     audit: AuditService = Depends(get_audit_service),
-    actor: dict = Depends(get_actor),
+    actor: CorePrincipal = Depends(get_current_user),
 ) -> LegalDocumentRead:
     """法规状态变更（被修订/废止，FR-016）。
 
@@ -206,15 +210,15 @@ async def update_status(
 
     await audit.log(
         action=AuditAction.MODIFY,
-        actor_id=actor.get("user_id"),
-        actor_role=actor.get("role"),
+        actor_id=actor.id,
+        actor_role=str(actor.role),
         target_type="legal_document",
         target_id=law.id,
         after_value={
             "status": law.status,
             "replaced_by": str(replaced_by_law_id) if replaced_by_law_id else None,
         },
-        ip_address=actor.get("ip"),
+        ip_address=client_ip(request),
     )
     return LegalDocumentRead(
         id=law.id,

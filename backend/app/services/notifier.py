@@ -44,12 +44,14 @@ async def emit_node_running(
     task_id: UUID,
     node_name: str,
     iteration: int = 0,
+    organization_id: UUID | None = None,
 ) -> None:
     """节点开始运行时发出通知。"""
     label = _label(node_name)
     try:
         await NotificationService(db).create(
             recipient_id=recipient_id,
+            organization_id=organization_id,
             kind="node_running",
             title=f"节点「{label}」开始运行",
             body=f"任务 {str(task_id)[:8]} 进入 {label} 阶段",
@@ -75,12 +77,14 @@ async def emit_node_done(
     task_id: UUID,
     node_name: str,
     iteration: int = 0,
+    organization_id: UUID | None = None,
 ) -> None:
     """节点运行完成时发出通知。"""
     label = _label(node_name)
     try:
         await NotificationService(db).create(
             recipient_id=recipient_id,
+            organization_id=organization_id,
             kind="node_done",
             title=f"节点「{label}」已完成",
             body=f"任务 {str(task_id)[:8]} 的 {label} 阶段已完成",

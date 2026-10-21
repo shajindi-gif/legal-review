@@ -1032,8 +1032,9 @@ async def trigger_doc_parse_background(*, task_id: UUID, document_id: UUID) -> N
 
     state = new_state(task_id=str(task_id), trace_id=str(task_id))
 
-    # 1. 取 recipient_id（任务提交人 = 通知接收人）
+    # 1. 取 recipient_id（任务提交人 = 通知接收人）与任务所属组织
     recipient_id: UUID | None = None
+    task_org_id: UUID | None = None
     try:
         async with get_session_factory()() as db:
             t = (
@@ -1043,6 +1044,7 @@ async def trigger_doc_parse_background(*, task_id: UUID, document_id: UUID) -> N
             ).scalar_one_or_none()
             if t is not None:
                 recipient_id = t.submitter_id
+                task_org_id = t.organization_id
     except Exception as e:
         logger.warning("trigger_load_recipient_failed", error=str(e))
 
@@ -1065,6 +1067,7 @@ async def trigger_doc_parse_background(*, task_id: UUID, document_id: UUID) -> N
                             task_id=task_id,
                             node_name=node_name,
                             iteration=state.get("iteration", 0),
+                            organization_id=task_org_id,
                         )
                 except Exception as e:
                     logger.warning(
@@ -1088,6 +1091,7 @@ async def trigger_doc_parse_background(*, task_id: UUID, document_id: UUID) -> N
                             task_id=task_id,
                             node_name=node_name,
                             iteration=state.get("iteration", 0),
+                            organization_id=task_org_id,
                         )
                 except Exception as e:
                     logger.warning(
@@ -1119,3 +1123,25 @@ async def trigger_doc_parse_background(*, task_id: UUID, document_id: UUID) -> N
                     await db.commit()
         except Exception:
             pass
+        return
+
+    # 3. 服务端激活埋点（R1-3）：工作流跑完且产出报告时记一次 task_completed。
+    #    独立 session + best-effort，绝不因埋点失败影响任务状态。
+    try:
+        from app.services.analytics_sink import build_task_completed_event
+
+        event = build_task_completed_event(
+            user_id=recipient_id,
+            task_id=task_id,
+            nodes_completed=completed_nodes,
+        )
+        if event is not None:
+            async with get_session_factory()() as adb:
+                adb.add(event)
+                await adb.commit()
+    except Exception as e:
+        logger.warning(
+            "task_completed_analytics_failed",
+            task_id=str(task_id),
+            error=str(e),
+        )

@@ -13,9 +13,10 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_actor, get_db
-from app.core.errors import AuthError, ValidationError
+from app.api.deps import get_db, require_role
+from app.core.errors import ValidationError
 from app.schemas.user_feedback import UserFeedbackListResponse, UserFeedbackRead
+from app.services.core_auth_client import CorePrincipal
 from app.services.user_feedback import UserFeedbackService
 
 router = APIRouter(prefix="/admin/user-feedback", tags=["admin-user-feedback"])
@@ -27,10 +28,11 @@ def get_admin_feedback_service(
     return UserFeedbackService(session)
 
 
-def _require_admin(actor: dict) -> None:
-    role = (actor.get("role") or "").lower()
-    if role not in {"admin", "supervisor"}:
-        raise AuthError("仅管理员/监督员可访问反馈管理")
+def _feedback_org_scope(user: CorePrincipal) -> UUID | None:
+    """平台 admin / super_admin 不限制；其余（supervisor）按本组织隔离。"""
+    if str(user.role) == "admin" or user.is_super_admin:
+        return None
+    return user.organization_id
 
 
 @router.get("", response_model=UserFeedbackListResponse)
@@ -39,16 +41,16 @@ async def admin_list_feedback(
     target_kind: str | None = Query(default=None),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
-    actor: dict = Depends(get_actor),
+    current_user: CorePrincipal = Depends(require_role("admin", "supervisor")),
     service: UserFeedbackService = Depends(get_admin_feedback_service),
 ) -> UserFeedbackListResponse:
-    """管理员全量查询。"""
-    _require_admin(actor)
+    """管理员查询（admin/supervisor；supervisor 限本组织）。"""
     items, total = await service.list_for_admin(
         status=status_filter,
         target_kind=target_kind,
         page=page,
         page_size=page_size,
+        organization_id=_feedback_org_scope(current_user),
     )
     return UserFeedbackListResponse(
         items=[UserFeedbackRead.model_validate(i) for i in items],
@@ -60,12 +62,11 @@ async def admin_list_feedback(
 
 @router.get("/summary")
 async def admin_feedback_summary(
-    actor: dict = Depends(get_actor),
+    current_user: CorePrincipal = Depends(require_role("admin", "supervisor")),
     service: UserFeedbackService = Depends(get_admin_feedback_service),
 ) -> dict:
-    """管理员概览：按 status 计数 + 总数。"""
-    _require_admin(actor)
-    return await service.summary()
+    """管理员概览：按 status 计数 + 总数（supervisor 限本组织）。"""
+    return await service.summary(organization_id=_feedback_org_scope(current_user))
 
 
 class AdminFeedbackUpdate(BaseModel):
@@ -79,11 +80,10 @@ class AdminFeedbackUpdate(BaseModel):
 async def admin_update_feedback(
     feedback_id: UUID,
     req: AdminFeedbackUpdate,
-    actor: dict = Depends(get_actor),
+    _current_user: CorePrincipal = Depends(require_role("admin", "supervisor")),
     service: UserFeedbackService = Depends(get_admin_feedback_service),
 ) -> UserFeedbackRead:
     """管理员更新 status / admin_reply。"""
-    _require_admin(actor)
     if req.status is None and req.admin_reply is None:
         raise ValidationError("至少提供 status 或 admin_reply 之一")
     record = await service.admin_update(

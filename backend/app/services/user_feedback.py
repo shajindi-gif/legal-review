@@ -21,6 +21,7 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import NotFoundError, ValidationError
+from app.models.user import User
 from app.models.user_feedback import UserFeedback
 from app.schemas.user_feedback import UserFeedbackCreate
 
@@ -39,14 +40,22 @@ class UserFeedbackService:
         *,
         user_id: UUID,
         payload: UserFeedbackCreate,
+        organization_id: UUID | None = None,
     ) -> UserFeedback:
         """提交一条用户反馈。
 
         极简校验：vote 必须 ∈ up/down/neutral（schema 已校验）；
         comment 长度 schema 已校验。
+
+        organization_id 为多租户隔离列（NOT NULL）：未显式传入时按提交人所属组织推导。
         """
+        if organization_id is None:
+            organization_id = await self.session.scalar(
+                select(User.organization_id).where(User.id == user_id)
+            )
         record = UserFeedback(
             user_id=user_id,
+            organization_id=organization_id,
             target_kind=payload.target_kind,
             target_id=payload.target_id,
             target_label=payload.target_label,
@@ -149,8 +158,13 @@ class UserFeedbackService:
         target_kind: str | None = None,
         page: int = 1,
         page_size: int = 50,
+        organization_id: UUID | None = None,
     ) -> tuple[list[UserFeedback], int]:
-        """管理员全量查询。"""
+        """管理员查询。
+
+        organization_id 非空时按组织隔离（团队组织管理员只看本组织反馈）；
+        为空表示不限（super_admin 全量）。
+        """
         if page < 1:
             raise ValidationError("page 必须 ≥ 1")
         if page_size < 1 or page_size > 200:
@@ -158,6 +172,9 @@ class UserFeedbackService:
 
         stmt = select(UserFeedback)
         count_stmt = select(func.count()).select_from(UserFeedback)
+        if organization_id is not None:
+            stmt = stmt.where(UserFeedback.organization_id == organization_id)
+            count_stmt = count_stmt.where(UserFeedback.organization_id == organization_id)
         if status:
             stmt = stmt.where(UserFeedback.status == status)
             count_stmt = count_stmt.where(UserFeedback.status == status)
@@ -203,12 +220,12 @@ class UserFeedbackService:
         return record
 
     # ============== 统计（admin dashboard 用） ==============
-    async def summary(self) -> dict:
-        """管理员概览：各 status 计数 + 总数。"""
-        rows = await self.session.execute(
-            select(UserFeedback.status, func.count())
-            .group_by(UserFeedback.status)
-        )
+    async def summary(self, *, organization_id: UUID | None = None) -> dict:
+        """管理员概览：各 status 计数 + 总数（organization_id 非空时按组织隔离）。"""
+        stmt = select(UserFeedback.status, func.count())
+        if organization_id is not None:
+            stmt = stmt.where(UserFeedback.organization_id == organization_id)
+        rows = await self.session.execute(stmt.group_by(UserFeedback.status))
         counts: dict[str, int] = {}
         total = 0
         for status, count in rows.all():

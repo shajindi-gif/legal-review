@@ -42,6 +42,11 @@ def get_trace_id(request: Request) -> str:
     return request.headers.get("X-Trace-Id") or ""
 
 
+def client_ip(request: Request) -> str | None:
+    """客户端 IP（审计记录用，不落库为原文以外用途）。"""
+    return request.client.host if request.client else None
+
+
 def get_actor(
     request: Request,
     x_user_id: str | None = Header(default=None, alias="X-User-Id"),
