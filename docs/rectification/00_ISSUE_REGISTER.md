@@ -167,3 +167,33 @@
 `frontend/src/lib/site.ts` 的 `unifiedSocialCreditCode` / `officeAddress` / `icpSecurityRecord` / `policyEffectiveDate` 仍为空。
 代码无法代填：这些是经营主体与备案的法定信息，需运营方提供原始凭证后填入，否则等于编造。
 
+## 6. 生产部署记录（2026-10-21）
+
+| 项 | 实测值 |
+| --- | --- |
+| 服务器 / 目录 | `ubuntu@124.221.229.12` · `/opt/legal-review` |
+| 部署提交 | `4ee01aa9afb462c60f8fb6ab9b4e5c213723ff1a`（分支 `upgrade/legalai86-platform`） |
+| 部署前备份 | `/opt/backups/code-pre-rectification-20261021.tar.gz`（548K） |
+| 镜像 | `legal-review/backend:latest`、`legal-review/frontend:latest` 重建成功 |
+| 数据库迁移 | `alembic upgrade head`：`0008 → 0009`，`alembic current = 0009 (head)` |
+| 容器顺序 | 先 `compose run --rm --no-deps backend alembic upgrade head`，后 `up -d --no-deps backend frontend` |
+| 未触碰 | nginx / PostgreSQL / Redis / Prometheus 容器、`deploy/.env`、DNS / 备案 / 域名绑定、支付配置 |
+
+线上验证（`curl` 实测，2026-10-21）：
+
+| 项目 | 结果 |
+| --- | --- |
+| `https://legalai86.com.cn/health` | 200 |
+| `/robots.txt` / `/sitemap.xml` | 200，内容含公开页与 sitemap 声明 |
+| `/solutions/sifaju` | 200，标题 / description / canonical / OG 均正确 |
+| `/pricing`、`/` | 200，浏览器水合后「套餐能力对比」7 行表格与「折合 ¥ / 月」正常 |
+| 无 JWT + `X-User-Id` 访问 `/api/v1/user-feedback` | 401（`auth_error`），确认不再信任 `X-User-Id` |
+| 无 JWT 访问 `/api/v1/admin/user-feedback/*` | 401 |
+| 容器状态 | `legal-backend` healthy、`legal-frontend` healthy |
+
+未验证 / 未做（如实标注）：
+- 真实支付下单—支付—回调—开通闭环未在本轮执行（未产生真实扣款，支付配置未变更）。
+- `notifications` / `user_feedback` 多租户修复已由单元测试覆盖，但未在生产以真实账号发起业务写入验证。
+- R1-4 合规字段仍为空，需运营方提供凭证。
+- `audit` / `metrics` 端点鉴权、`GET /auth/quota` 501 不在本轮范围。
+
